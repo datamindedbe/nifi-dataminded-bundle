@@ -1,1 +1,2 @@
 be.dataminded.nifi.plugins.GenerateOracleTableFetch
+be.dataminded.nifi.plugins.ExecuteOracleSQL

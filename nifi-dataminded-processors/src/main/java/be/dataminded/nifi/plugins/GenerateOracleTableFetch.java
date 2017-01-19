@@ -21,7 +21,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 
-@Tags({"database", "sql", "table"})
+@Tags({"database", "sql", "table", "dataminded"})
 @CapabilityDescription("Generate queries to extract all data from database tables")
 public class GenerateOracleTableFetch extends AbstractProcessor {
 
