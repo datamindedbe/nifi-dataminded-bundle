@@ -4,7 +4,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
-import org.apache.nifi.components.AbstractConfigurableComponent;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.dbcp.DBCPService;
 import org.apache.nifi.flowfile.FlowFile;
@@ -24,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 @Tags({"database", "sql", "table"})
 @CapabilityDescription("Generate queries to extract all data from database tables")
-public class GenerateOracleTableFetch extends AbstractConfigurableComponent implements Processor {
+public class GenerateOracleTableFetch extends AbstractProcessor {
 
     static final Relationship REL_SUCCESS;
 
@@ -35,11 +34,9 @@ public class GenerateOracleTableFetch extends AbstractConfigurableComponent impl
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
     static final PropertyDescriptor SPLIT_COLUMN;
 
-    private ComponentLog logger;
-    private String identifier;
-
     private final List<PropertyDescriptor> propertyDescriptors;
     private final Set<Relationship> relationships;
+
 
     public GenerateOracleTableFetch() {
         relationships = ImmutableSet.of(REL_SUCCESS);
@@ -52,8 +49,8 @@ public class GenerateOracleTableFetch extends AbstractConfigurableComponent impl
     }
 
     @Override
-    public void onTrigger(ProcessContext context, ProcessSessionFactory sessionFactory) throws ProcessException {
-        ProcessSession session = sessionFactory.createSession();
+    public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
+        final ComponentLog logger = getLogger();
 
         final DBCPService dbcpService = context.getProperty(DBCP_SERVICE).asControllerService(DBCPService.class);
         final String tableName = context.getProperty(TABLE_NAME).getValue();
@@ -81,7 +78,9 @@ public class GenerateOracleTableFetch extends AbstractConfigurableComponent impl
                     high = resultSet.getLong(2);
                     numberOfRecords = resultSet.getLong(3);
                 } else {
-                    logger.error("Something is very wrong here, one row (even if count is zero) should have been returned: {}", new Object[]{selectQuery});
+                    logger.error(
+                            "Something is very wrong here, one row (even if count is zero) should have been returned: {}",
+                            new Object[]{selectQuery});
                     throw new SQLException("No rows returned from metadata query: " + selectQuery);
                 }
             } catch (SQLException e) {
@@ -93,7 +92,7 @@ public class GenerateOracleTableFetch extends AbstractConfigurableComponent impl
             long chunkSize = (high - low) / Math.max(chunks, 1);
             for (int i = 0; i < chunks; i++) {
                 long min = (low + i * chunkSize);
-                long max = (i == chunks -1 ) ? high : Math.min((i + 1) * chunkSize - 1 + low, high);
+                long max = (i == chunks - 1) ? high : Math.min((i + 1) * chunkSize - 1 + low, high);
                 String query = String.format("SELECT %s FROM %s WHERE %s BETWEEN %s AND %s",
                                              columnNames,
                                              tableName,
@@ -116,12 +115,6 @@ public class GenerateOracleTableFetch extends AbstractConfigurableComponent impl
 
 
     @Override
-    public void initialize(ProcessorInitializationContext context) {
-        this.logger = context.getLogger();
-        this.identifier = context.getIdentifier();
-    }
-
-    @Override
     public Set<Relationship> getRelationships() {
         return relationships;
     }
@@ -131,13 +124,6 @@ public class GenerateOracleTableFetch extends AbstractConfigurableComponent impl
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
         return propertyDescriptors;
     }
-
-    @Override
-    public String getIdentifier() {
-        return identifier;
-    }
-
-
 
     static {
         REL_SUCCESS = new Relationship.Builder()
@@ -160,7 +146,8 @@ public class GenerateOracleTableFetch extends AbstractConfigurableComponent impl
 
         COLUMN_NAMES = new org.apache.nifi.components.PropertyDescriptor.Builder()
                 .name("Columns to Return")
-                .description("A comma-separated list of column names to be used in the query. If your database requires special treatment of the names (quoting, e.g.), each name should include such treatment. If no column names are supplied, all columns in the specified table will be returned.")
+                .description(
+                        "A comma-separated list of column names to be used in the query. If your database requires special treatment of the names (quoting, e.g.), each name should include such treatment. If no column names are supplied, all columns in the specified table will be returned.")
                 .required(false)
                 .defaultValue("*")
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
@@ -168,7 +155,8 @@ public class GenerateOracleTableFetch extends AbstractConfigurableComponent impl
 
         QUERY_TIMEOUT = new org.apache.nifi.components.PropertyDescriptor.Builder()
                 .name("Max Wait Time")
-                .description("The maximum amount of time allowed for a running SQL select query , zero means there is no limit. Max time less than 1 second will be equal to zero.")
+                .description(
+                        "The maximum amount of time allowed for a running SQL select query , zero means there is no limit. Max time less than 1 second will be equal to zero.")
                 .defaultValue("0 seconds")
                 .required(true)
                 .addValidator(StandardValidators.TIME_PERIOD_VALIDATOR)
