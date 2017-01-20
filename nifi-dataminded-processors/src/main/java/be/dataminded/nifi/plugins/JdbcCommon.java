@@ -98,7 +98,6 @@ class JdbcCommon {
             final ResultSetMetaData meta = rs.getMetaData();
             final int nrOfColumns = meta.getColumnCount();
             long nrOfRows = 0;
-            rs.setFetchSize(1000);
             while (rs.next()) {
                 if (callback != null) {
                     callback.processRow(rs);

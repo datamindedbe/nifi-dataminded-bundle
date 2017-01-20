@@ -47,7 +47,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class TestExecuteSQLToo {
+public class TestExecuteOracleSQL {
 
     private static final Logger LOGGER;
 
@@ -56,8 +56,8 @@ public class TestExecuteSQLToo {
         System.setProperty("org.slf4j.simpleLogger.showDateTime", "true");
         System.setProperty("org.slf4j.simpleLogger.log.nifi.io.nio", "debug");
         System.setProperty("org.slf4j.simpleLogger.log.nifi.processors.standard.ExecuteOracleSQL", "debug");
-        System.setProperty("org.slf4j.simpleLogger.log.nifi.processors.standard.TestExecuteSQLToo", "debug");
-        LOGGER = LoggerFactory.getLogger(TestExecuteSQLToo.class);
+        System.setProperty("org.slf4j.simpleLogger.log.nifi.processors.standard.TestExecuteOracleSQL", "debug");
+        LOGGER = LoggerFactory.getLogger(TestExecuteOracleSQL.class);
     }
 
     final static String DB_LOCATION = "target/db";
@@ -89,11 +89,11 @@ public class TestExecuteSQLToo {
     @Before
     public void setup() throws InitializationException {
         final DBCPService dbcp = new DBCPServiceSimpleImpl();
-        final Map<String, String> dbcpProperties = new HashMap<>();
 
-        runner = TestRunners.newTestRunner(ExecuteOracleSQL.class);
-        runner.addControllerService("dbcp", dbcp, dbcpProperties);
+        runner = TestRunners.newTestRunner(new ExecuteOracleSQL());
+        runner.addControllerService("dbcp", dbcp, new HashMap<>());
         runner.enableControllerService(dbcp);
+        runner.setProperty(ExecuteOracleSQL.FETCH_SIZE, "100");
         runner.setProperty(ExecuteOracleSQL.DBCP_SERVICE, "dbcp");
     }
 
@@ -102,16 +102,16 @@ public class TestExecuteSQLToo {
         runner.setIncomingConnection(true);
         runner.setProperty(ExecuteOracleSQL.SQL_SELECT_QUERY, "SELECT * FROM persons");
         runner.run();
-        runner.assertTransferCount(ExecuteOracleSQL.REL_SUCCESS, 0);
-        runner.assertTransferCount(ExecuteOracleSQL.REL_FAILURE, 0);
+        runner.assertTransferCount(ExecuteOracleSQL.SUCCESS, 0);
+        runner.assertTransferCount(ExecuteOracleSQL.FAILURE, 0);
     }
 
     @Test
     public void testIncomingConnectionWithNoFlowFileAndNoQuery() throws InitializationException {
         runner.setIncomingConnection(true);
         runner.run();
-        runner.assertTransferCount(ExecuteOracleSQL.REL_SUCCESS, 0);
-        runner.assertTransferCount(ExecuteOracleSQL.REL_FAILURE, 0);
+        runner.assertTransferCount(ExecuteOracleSQL.SUCCESS, 0);
+        runner.assertTransferCount(ExecuteOracleSQL.FAILURE, 0);
     }
 
     @Test(expected = AssertionError.class)
@@ -166,8 +166,8 @@ public class TestExecuteSQLToo {
         runner.setProperty(ExecuteOracleSQL.SQL_SELECT_QUERY, "SELECT * FROM TEST_NULL_INT");
         runner.run();
 
-        runner.assertAllFlowFilesTransferred(ExecuteOracleSQL.REL_SUCCESS, 1);
-        runner.getFlowFilesForRelationship(ExecuteOracleSQL.REL_SUCCESS).get(0).assertAttributeEquals(ExecuteOracleSQL.RESULT_ROW_COUNT, "2");
+        runner.assertAllFlowFilesTransferred(ExecuteOracleSQL.SUCCESS, 1);
+        runner.getFlowFilesForRelationship(ExecuteOracleSQL.SUCCESS).get(0).assertAttributeEquals(ExecuteOracleSQL.RESULT_ROW_COUNT, "2");
     }
 
     @Test
@@ -195,8 +195,8 @@ public class TestExecuteSQLToo {
         runner.setProperty(ExecuteOracleSQL.SQL_SELECT_QUERY, "select a.host as hostA,b.host as hostB from host1 a join host2 b on b.id=a.id");
         runner.run();
 
-        runner.assertAllFlowFilesTransferred(ExecuteOracleSQL.REL_SUCCESS, 1);
-        runner.getFlowFilesForRelationship(ExecuteOracleSQL.REL_SUCCESS).get(0).assertAttributeEquals(ExecuteOracleSQL.RESULT_ROW_COUNT, "1");
+        runner.assertAllFlowFilesTransferred(ExecuteOracleSQL.SUCCESS, 1);
+        runner.getFlowFilesForRelationship(ExecuteOracleSQL.SUCCESS).get(0).assertAttributeEquals(ExecuteOracleSQL.RESULT_ROW_COUNT, "1");
     }
 
     @Test
@@ -221,7 +221,7 @@ public class TestExecuteSQLToo {
         runner.setProperty(ExecuteOracleSQL.SQL_SELECT_QUERY, "SELECT val1 FROM TEST_NO_ROWS");
         runner.run();
 
-        runner.assertAllFlowFilesTransferred(ExecuteOracleSQL.REL_FAILURE, 1);
+        runner.assertAllFlowFilesTransferred(ExecuteOracleSQL.FAILURE, 1);
     }
 
     public void invokeOnTrigger(final Integer queryTimeout, final String query, final boolean incomingFlowFile, final boolean setQueryProperty)
@@ -260,9 +260,9 @@ public class TestExecuteSQLToo {
         }
 
         runner.run();
-        runner.assertAllFlowFilesTransferred(ExecuteOracleSQL.REL_SUCCESS, 1);
+        runner.assertAllFlowFilesTransferred(ExecuteOracleSQL.SUCCESS, 1);
 
-        final List<MockFlowFile> flowfiles = runner.getFlowFilesForRelationship(ExecuteOracleSQL.REL_SUCCESS);
+        final List<MockFlowFile> flowfiles = runner.getFlowFilesForRelationship(ExecuteOracleSQL.SUCCESS);
         final InputStream in = new ByteArrayInputStream(flowfiles.get(0).toByteArray());
         final DatumReader<GenericRecord> datumReader = new GenericDatumReader<>();
         try (DataFileStream<GenericRecord> dataFileReader = new DataFileStream<>(in, datumReader)) {
