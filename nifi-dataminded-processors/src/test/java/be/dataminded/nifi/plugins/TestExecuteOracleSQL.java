@@ -93,7 +93,6 @@ public class TestExecuteOracleSQL {
         runner = TestRunners.newTestRunner(new ExecuteOracleSQL());
         runner.addControllerService("dbcp", dbcp, new HashMap<>());
         runner.enableControllerService(dbcp);
-        runner.setProperty(ExecuteOracleSQL.FETCH_SIZE, "100");
         runner.setProperty(ExecuteOracleSQL.DBCP_SERVICE, "dbcp");
     }
 

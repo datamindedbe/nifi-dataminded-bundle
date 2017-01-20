@@ -33,10 +33,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public class TestGenerateOracleTableFetch {
 
-    private TestRunner runner;
-    private GenerateOracleTableFetch processor;
-
     private final static String DB_LOCATION = "target/db_gtf";
+
+    private TestRunner runner;
 
     @BeforeClass
     public static void setupBeforeClass() throws IOException {
@@ -69,7 +68,6 @@ public class TestGenerateOracleTableFetch {
 
     @Before
     public void setUp() throws Exception {
-        processor = new GenerateOracleTableFetch();
         final DBCPService dbcp = new DBCPServiceSimpleImpl();
         final Map<String, String> dbcpProperties = new HashMap<>();
 

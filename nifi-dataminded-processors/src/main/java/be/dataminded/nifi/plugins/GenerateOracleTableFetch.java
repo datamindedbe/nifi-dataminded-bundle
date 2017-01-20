@@ -34,20 +34,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
     static final PropertyDescriptor SPLIT_COLUMN;
 
-    private final List<PropertyDescriptor> propertyDescriptors;
-    private final Set<Relationship> relationships;
-
-
-    public GenerateOracleTableFetch() {
-        relationships = ImmutableSet.of(REL_SUCCESS);
-        propertyDescriptors = ImmutableList.of(DBCP_SERVICE,
-                                               TABLE_NAME,
-                                               COLUMN_NAMES,
-                                               QUERY_TIMEOUT,
-                                               NUMBER_OF_PARTITIONS,
-                                               SPLIT_COLUMN);
-    }
-
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
         final ComponentLog logger = getLogger();
@@ -116,13 +102,18 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return ImmutableSet.of(REL_SUCCESS);
     }
 
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return propertyDescriptors;
+        return ImmutableList.of(DBCP_SERVICE,
+                                TABLE_NAME,
+                                COLUMN_NAMES,
+                                QUERY_TIMEOUT,
+                                NUMBER_OF_PARTITIONS,
+                                SPLIT_COLUMN);
     }
 
     static {

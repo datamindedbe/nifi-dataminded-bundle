@@ -374,7 +374,7 @@ class JdbcCommon {
         return builder.endRecord();
     }
 
-    public static String normalizeNameForAvro(String inputName) {
+    private static String normalizeNameForAvro(String inputName) {
         String normalizedName = inputName.replaceAll("[^A-Za-z0-9_]", "_");
         if (Character.isDigit(normalizedName.charAt(0))) {
             normalizedName = "_" + normalizedName;
