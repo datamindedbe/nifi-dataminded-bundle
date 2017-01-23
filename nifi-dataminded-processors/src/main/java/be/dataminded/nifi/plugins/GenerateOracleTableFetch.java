@@ -86,9 +86,11 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                                              min,
                                              max);
                 FlowFile sqlFlowFile = session.create();
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", tableName);
                 sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
                 session.transfer(sqlFlowFile, REL_SUCCESS);
             }
+
             session.commit();
         } catch (final ProcessException pe) {
             // Log the cause of the ProcessException if it is available
