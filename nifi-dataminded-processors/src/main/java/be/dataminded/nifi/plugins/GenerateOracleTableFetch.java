@@ -3,6 +3,7 @@ package be.dataminded.nifi.plugins;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
+import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
@@ -25,6 +26,12 @@ import java.util.concurrent.TimeUnit;
 @Tags({"database", "sql", "table", "dataminded"})
 @CapabilityDescription("Generate queries to extract all data from database tables")
 @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
+@WritesAttributes({
+        @WritesAttribute(attribute = "tenant.name", description = "Hint for which tenant this data is ingested"),
+        @WritesAttribute(attribute = "source.name", description = "Hint for which source this data is ingested"),
+        @WritesAttribute(attribute = "schema.name", description = "Hint for which schema this data is ingested"),
+        @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
+})
 public class GenerateOracleTableFetch extends AbstractProcessor {
 
     static final Relationship REL_SUCCESS;
@@ -35,6 +42,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor QUERY_TIMEOUT;
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
     static final PropertyDescriptor SPLIT_COLUMN;
+
+    static final PropertyDescriptor TENANT;
+    static final PropertyDescriptor SOURCE;
+    static final PropertyDescriptor SCHEMA;
 
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
@@ -88,14 +99,26 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                                              min,
                                              max);
                 FlowFile sqlFlowFile = session.create();
-                sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", tableName.toLowerCase().replaceAll("_", "-"));
-                try {
-                    sqlFlowFile = session.putAttribute(sqlFlowFile, "schema.name", dbcpService.getConnection().getSchema());
-                } catch (SQLException e) {
-                    e.printStackTrace();
+                sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
+
+                String tenant = context.getProperty(TENANT).getValue();
+                String source = context.getProperty(SOURCE).getValue();
+                String schema = context.getProperty(SCHEMA).getValue();
+
+                if (tenant != null) {
+                    sqlFlowFile = session.putAttribute(sqlFlowFile, "tenant.name", sanitizeAttribute(tenant));
                 }
 
-                sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
+                if (source != null) {
+                    sqlFlowFile = session.putAttribute(sqlFlowFile, "source.name", sanitizeAttribute(source));
+
+                }
+
+                if (schema != null) {
+                    sqlFlowFile = session.putAttribute(sqlFlowFile, "schema.name", sanitizeAttribute(schema));
+                }
+
                 session.transfer(sqlFlowFile, REL_SUCCESS);
             }
 
@@ -107,6 +130,13 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             session.rollback();
             context.yield();
         }
+    }
+
+    private String sanitizeAttribute(String attribute) {
+        if (attribute == null) {
+            return null;
+        }
+        return attribute.toLowerCase().replaceAll("_", "-");
     }
 
 
@@ -123,7 +153,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                                 COLUMN_NAMES,
                                 QUERY_TIMEOUT,
                                 NUMBER_OF_PARTITIONS,
-                                SPLIT_COLUMN);
+                                SPLIT_COLUMN,
+                                TENANT,
+                                SOURCE,
+                                SCHEMA);
     }
 
     static {
@@ -176,6 +209,34 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .required(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+                .build();
+
+        TENANT = new PropertyDescriptor.Builder()
+                .name("tenant")
+                .displayName("Tenant")
+                .required(false)
+                .defaultValue(null)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .description("Hint for which tenant this data is ingested")
+                .build();
+
+        SOURCE = new PropertyDescriptor.Builder()
+                .name("source")
+                .displayName("Source")
+                .required(false)
+                .defaultValue(null)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .description("Hint for which source this data is ingested")
+                .build();
+
+
+        SCHEMA = new PropertyDescriptor.Builder()
+                .name("schema")
+                .displayName("Scheme")
+                .defaultValue(null)
+                .required(false)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .description("Hint for which schema this data is ingested")
                 .build();
     }
 }

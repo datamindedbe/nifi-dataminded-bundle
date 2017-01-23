@@ -2,11 +2,16 @@ package be.dataminded.nifi.plugins;
 
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+import org.apache.nifi.attribute.expression.language.StandardExpressionLanguageCompiler;
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.dbcp.DBCPService;
+import org.apache.nifi.expression.ExpressionLanguageCompiler;
 import org.apache.nifi.processor.exception.ProcessException;
+import org.apache.nifi.registry.VariableDescriptor;
 import org.apache.nifi.reporting.InitializationException;
 import org.apache.nifi.util.MockFlowFile;
+import org.apache.nifi.util.MockVariableRegistry;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
 import org.apache.nifi.util.file.FileUtils;
@@ -18,10 +23,7 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static be.dataminded.nifi.plugins.GenerateOracleTableFetch.REL_SUCCESS;
@@ -106,10 +108,19 @@ public class TestGenerateOracleTableFetch {
         runner.setProperty(GenerateOracleTableFetch.TABLE_NAME, "TEST_QUERY_DB_TABLE");
         runner.setIncomingConnection(false);
         runner.setProperty(GenerateOracleTableFetch.SPLIT_COLUMN, "ID");
+        runner.setProperty(GenerateOracleTableFetch.TENANT, "TENANT");
+        runner.setProperty(GenerateOracleTableFetch.SCHEMA, "SCHEMA");
+        runner.setProperty(GenerateOracleTableFetch.SOURCE, "SOURCE");
+        runner.setProperty(GenerateOracleTableFetch.SPLIT_COLUMN, "ID");
         runner.setProperty(GenerateOracleTableFetch.NUMBER_OF_PARTITIONS, String.valueOf(numberOfPartitions));
         runner.run();
 
         runner.assertAllFlowFilesTransferred(REL_SUCCESS, numberOfPartitions);
+
+        runner.assertAllFlowFilesContainAttribute("table.name");
+        runner.assertAllFlowFilesContainAttribute("tenant.name");
+        runner.assertAllFlowFilesContainAttribute("schema.name");
+        runner.assertAllFlowFilesContainAttribute("source.name");
 
         List<String> queries = Lists.newArrayList();
         for (MockFlowFile flowFile : runner.getFlowFilesForRelationship(REL_SUCCESS)) {
@@ -124,20 +135,24 @@ public class TestGenerateOracleTableFetch {
 
 
         List<String> names = queries.stream().flatMap(query -> {
-                                                      try {
-                                                          List<String> results = Lists.newArrayList();
-                                                          ResultSet resultSet = stmt.executeQuery(query);
-                                                          while (resultSet.next()) {
-                                                              results.add(resultSet.getString("name"));
+                                                          try {
+                                                              List<String> results = Lists.newArrayList();
+                                                              ResultSet resultSet = stmt.executeQuery(query);
+                                                              while (resultSet.next()) {
+                                                                  results.add(resultSet.getString("name"));
+                                                              }
+                                                              return results.stream();
+                                                          } catch (SQLException ignore) {
                                                           }
-                                                          return results.stream();
-                                                      } catch (SQLException ignore) {
+                                                          return new ArrayList<String>().stream();
                                                       }
-                                                      return new ArrayList<String>().stream();
-                                                  }
         ).collect(Collectors.toList());
         assertThat(names).containsExactly("Joe Smith", "John Doe", "Joey Johnson", "Jasper Smith", "Jason Statham");
+
     }
+
+
+
 
     /**
      * Simple implementation only for ListDatabaseTables processor testing.
