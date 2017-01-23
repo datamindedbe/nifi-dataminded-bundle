@@ -2,6 +2,7 @@ package be.dataminded.nifi.plugins;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 @Tags({"database", "sql", "table", "dataminded"})
 @CapabilityDescription("Generate queries to extract all data from database tables")
+@WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
 public class GenerateOracleTableFetch extends AbstractProcessor {
 
     static final Relationship REL_SUCCESS;
@@ -86,7 +88,13 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                                              min,
                                              max);
                 FlowFile sqlFlowFile = session.create();
-                sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", tableName);
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", tableName.toLowerCase().replaceAll("_", "-"));
+                try {
+                    sqlFlowFile = session.putAttribute(sqlFlowFile, "schema.name", dbcpService.getConnection().getSchema());
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+
                 sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
                 session.transfer(sqlFlowFile, REL_SUCCESS);
             }
