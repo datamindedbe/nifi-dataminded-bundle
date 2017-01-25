@@ -53,6 +53,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
         final DBCPService dbcpService = context.getProperty(DBCP_SERVICE).asControllerService(DBCPService.class);
         final String tableName = context.getProperty(TABLE_NAME).getValue();
+        final String schema = context.getProperty(SCHEMA).getValue();
         final String columnNames = context.getProperty(COLUMN_NAMES).getValue();
         final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
         final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
@@ -92,8 +93,9 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             for (int i = 0; i < chunks; i++) {
                 long min = (low + i * chunkSize);
                 long max = (i == chunks - 1) ? high : Math.min((i + 1) * chunkSize - 1 + low, high);
-                String query = String.format("SELECT %s FROM %s WHERE %s BETWEEN %s AND %s",
+                String query = String.format("SELECT %s FROM %s.%s WHERE %s BETWEEN %s AND %s",
                                              columnNames,
+                                             schema,
                                              tableName,
                                              splitColumnName,
                                              min,
@@ -104,7 +106,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
                 String tenant = context.getProperty(TENANT).getValue();
                 String source = context.getProperty(SOURCE).getValue();
-                String schema = context.getProperty(SCHEMA).getValue();
 
                 if (tenant != null) {
                     sqlFlowFile = session.putAttribute(sqlFlowFile, "tenant.name", sanitizeAttribute(tenant));
@@ -232,9 +233,9 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
         SCHEMA = new PropertyDescriptor.Builder()
                 .name("schema")
-                .displayName("Scheme")
+                .displayName("Schema")
                 .defaultValue(null)
-                .required(false)
+                .required(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .description("Hint for which schema this data is ingested")
                 .build();
