@@ -10,14 +10,14 @@
         <version>1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>nifi-dataminded-processors-nar</artifactId>
+    <artifactId>nifi-dataminded-database-processors-nar</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>nar</packaging>
 
     <dependencies>
         <dependency>
             <groupId>org.apache.nifi</groupId>
-            <artifactId>nifi-dataminded-processors</artifactId>
+            <artifactId>nifi-dataminded-database-processors</artifactId>
             <version>${project.version}</version>
         </dependency>
 

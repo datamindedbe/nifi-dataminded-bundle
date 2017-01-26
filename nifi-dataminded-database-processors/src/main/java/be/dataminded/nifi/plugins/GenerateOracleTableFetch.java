@@ -60,9 +60,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
 
         try {
-            String selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s",
+            String selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s",
                                                splitColumnName,
                                                splitColumnName,
+                                               schema,
                                                tableName);
             long low, high, numberOfRecords;
 

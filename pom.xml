@@ -14,8 +14,11 @@
     </properties>
 
     <modules>
-        <module>nifi-dataminded-processors</module>
-        <module>nifi-dataminded-processors-nar</module>
+        <module>nifi-dataminded-database-processors</module>
+        <module>nifi-dataminded-database-processors-nar</module>
+
+        <module>nifi-dataminded-aws-processors</module>
+        <module>nifi-dataminded-aws-processors-nar</module>
     </modules>
 
     <dependencyManagement>
@@ -64,6 +67,11 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.19.1</version>
             </plugin>
         </plugins>
     </build>

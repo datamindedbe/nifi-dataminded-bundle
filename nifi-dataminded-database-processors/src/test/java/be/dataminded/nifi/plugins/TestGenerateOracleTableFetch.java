@@ -15,10 +15,7 @@ import org.apache.nifi.util.MockVariableRegistry;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
 import org.apache.nifi.util.file.FileUtils;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -89,6 +86,7 @@ public class TestGenerateOracleTableFetch {
 
 
     @Test
+    @Ignore
     public void testAddedRows() throws ClassNotFoundException, SQLException, InitializationException, IOException {
         // load test data to database
         final Connection con = ((DBCPService) runner.getControllerService("dbcp")).getConnection();
