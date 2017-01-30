@@ -14,11 +14,8 @@
     </properties>
 
     <modules>
-        <module>nifi-dataminded-database-processors</module>
-        <module>nifi-dataminded-database-processors-nar</module>
-
-        <module>nifi-dataminded-aws-processors</module>
-        <module>nifi-dataminded-aws-processors-nar</module>
+        <module>nifi-dataminded-processors</module>
+        <module>nifi-dataminded-processors-nar</module>
     </modules>
 
     <dependencyManagement>

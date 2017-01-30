@@ -20,7 +20,7 @@ import java.util.*;
 @EventDriven
 @SideEffectFree
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
-@Tags({"attributes", "modification", "update", "REST", "JSON"})
+@Tags({"attributes", "modification", "update", "REST", "JSON", "dataminded"})
 @CapabilityDescription("Updates the Attributes for a FlowFile based on an HTTP REST call")
 public class UpdateAttributeREST extends AbstractProcessor {
 

@@ -56,29 +56,28 @@ import java.util.concurrent.atomic.AtomicLong;
         + "a timer, or cron expression, using the standard scheduling methods, or it can be triggered by an incoming FlowFile. "
         + "If it is triggered by an incoming FlowFile, then attributes of that FlowFile will be available when evaluating the "
         + "select query. FlowFile attribute 'executesql.row.count' indicates how many rows were selected.")
-@WritesAttribute(attribute="executesql.row.count", description = "Contains the number of rows returned in the select query")
+@WritesAttribute(attribute = "executesql.row.count", description = "Contains the number of rows returned in the select query")
 public class ExecuteOracleSQL extends AbstractProcessor {
 
-    public static final String RESULT_ROW_COUNT = "executesql.row.count";
+    static final String RESULT_ROW_COUNT = "executesql.row.count";
 
     // Relationships
-    public static final Relationship SUCCESS;
-    public static final Relationship FAILURE;
+    static final Relationship SUCCESS;
+    static final Relationship FAILURE;
 
     // Properties
-    public static final PropertyDescriptor DBCP_SERVICE;
-    public static final PropertyDescriptor SQL_SELECT_QUERY;
-    public static final PropertyDescriptor QUERY_TIMEOUT;
-    public static final PropertyDescriptor NORMALIZE_NAMES_FOR_AVRO;
-    public static final PropertyDescriptor FETCH_SIZE;
-
+    static final PropertyDescriptor DBCP_SERVICE;
+    static final PropertyDescriptor SQL_SELECT_QUERY;
+    static final PropertyDescriptor QUERY_TIMEOUT;
+    static final PropertyDescriptor NORMALIZE_NAMES_FOR_AVRO;
+    static final PropertyDescriptor FETCH_SIZE;
 
     @OnScheduled
     public void setup(ProcessContext context) {
         // If the query is not set, then an incoming flow file is needed. Otherwise fail the initialization
         if (!context.getProperty(SQL_SELECT_QUERY).isSet() && !context.hasIncomingConnection()) {
-            final String errorString = "Either the Select Query must be specified or there must be an incoming connection "
-                    + "providing flowfile(s) containing a SQL select query";
+            final String errorString = "Either the Select Query must be specified or there must be an incoming " +
+                    "connection providing flowfile(s) containing a SQL select query";
             getLogger().error(errorString);
             throw new ProcessException(errorString);
         }
@@ -117,7 +116,7 @@ public class ExecuteOracleSQL extends AbstractProcessor {
         }
 
         try (final Connection con = dbcpService.getConnection();
-            final Statement st = con.createStatement()) {
+             final Statement st = con.createStatement()) {
             st.setQueryTimeout(queryTimeout); // timeout in seconds
             st.setFetchSize(fetchSize); // hint fetch size
             final AtomicLong nrOfRows = new AtomicLong(0L);
@@ -138,24 +137,24 @@ public class ExecuteOracleSQL extends AbstractProcessor {
             fileToProcess = session.putAttribute(fileToProcess, RESULT_ROW_COUNT, String.valueOf(nrOfRows.get()));
 
             logger.info("{} contains {} Avro records; transferring to 'success'",
-                    new Object[]{fileToProcess, nrOfRows.get()});
+                        new Object[]{fileToProcess, nrOfRows.get()});
             session.getProvenanceReporter().modifyContent(fileToProcess, "Retrieved " + nrOfRows.get() + " rows",
-                    stopWatch.getElapsed(TimeUnit.MILLISECONDS));
+                                                          stopWatch.getElapsed(TimeUnit.MILLISECONDS));
             session.transfer(fileToProcess, SUCCESS);
         } catch (final ProcessException | SQLException e) {
             if (fileToProcess == null) {
                 // This can happen if any exceptions occur while setting up the connection, statement, etc.
                 logger.error("Unable to execute SQL select query {} due to {}. No FlowFile to route to failure",
-                        new Object[]{selectQuery, e});
+                             new Object[]{selectQuery, e});
                 context.yield();
             } else {
                 if (context.hasIncomingConnection()) {
                     logger.error("Unable to execute SQL select query {} for {} due to {}; routing to failure",
-                            new Object[]{selectQuery, fileToProcess, e});
+                                 new Object[]{selectQuery, fileToProcess, e});
                     fileToProcess = session.penalize(fileToProcess);
                 } else {
                     logger.error("Unable to execute SQL select query {} due to {}; routing to failure",
-                            new Object[]{selectQuery, e});
+                                 new Object[]{selectQuery, e});
                     context.yield();
                 }
                 session.transfer(fileToProcess, FAILURE);
@@ -183,7 +182,8 @@ public class ExecuteOracleSQL extends AbstractProcessor {
 
         FAILURE = new Relationship.Builder()
                 .name("failure")
-                .description("SQL query execution failed. Incoming FlowFile will be penalized and routed to this relationship")
+                .description(
+                        "SQL query execution failed. Incoming FlowFile will be penalized and routed to this relationship")
                 .build();
 
 
@@ -197,11 +197,12 @@ public class ExecuteOracleSQL extends AbstractProcessor {
 
         SQL_SELECT_QUERY = new PropertyDescriptor.Builder()
                 .name("SQL select query")
-                .description("The SQL select query to execute. The query can be empty, a constant value, or built from attributes "
-                                     + "using Expression Language. If this property is specified, it will be used regardless of the content of "
-                                     + "incoming flowfiles. If this property is empty, the content of the incoming flow file is expected "
-                                     + "to contain a valid SQL select query, to be issued by the processor to the database. Note that Expression "
-                                     + "Language is not evaluated for flow file contents.")
+                .description(
+                        "The SQL select query to execute. The query can be empty, a constant value, or built from attributes "
+                                + "using Expression Language. If this property is specified, it will be used regardless of the content of "
+                                + "incoming flowfiles. If this property is empty, the content of the incoming flow file is expected "
+                                + "to contain a valid SQL select query, to be issued by the processor to the database. Note that Expression "
+                                + "Language is not evaluated for flow file contents.")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .expressionLanguageSupported(true)
@@ -220,8 +221,9 @@ public class ExecuteOracleSQL extends AbstractProcessor {
         NORMALIZE_NAMES_FOR_AVRO = new PropertyDescriptor.Builder()
                 .name("dbf-normalize")
                 .displayName("Normalize Table/Column Names")
-                .description("Whether to change non-Avro-compatible characters in column names to Avro-compatible characters. For example, colons and periods "
-                                     + "will be changed to underscores in order to build a valid Avro record.")
+                .description(
+                        "Whether to change non-Avro-compatible characters in column names to Avro-compatible characters. For example, colons and periods "
+                                + "will be changed to underscores in order to build a valid Avro record.")
                 .allowableValues("true", "false")
                 .defaultValue("false")
                 .required(true)
@@ -230,8 +232,9 @@ public class ExecuteOracleSQL extends AbstractProcessor {
         FETCH_SIZE = new PropertyDescriptor.Builder()
                 .name("fetch-size-hint")
                 .displayName("Fetch Size")
-                .description("The number of result rows to be fetched from the result set at a time. This is a hint to the driver and may not be "
-                                     + "honored and/or exact. If the value specified is zero, then the hint is ignored.")
+                .description(
+                        "The number of result rows to be fetched from the result set at a time. This is a hint to the driver and may not be "
+                                + "honored and/or exact. If the value specified is zero, then the hint is ignored.")
                 .defaultValue("1000")
                 .addValidator(StandardValidators.POSITIVE_INTEGER_VALIDATOR)
                 .required(false)
