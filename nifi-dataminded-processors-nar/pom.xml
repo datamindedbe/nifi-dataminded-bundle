@@ -33,7 +33,7 @@
     <dependencies>
         <dependency>
             <groupId>org.apache.nifi</groupId>
-            <artifactId>nifi-dataminded-database-processors</artifactId>
+            <artifactId>nifi-dataminded-processors</artifactId>
             <version>${project.version}</version>
         </dependency>
 

@@ -16,6 +16,7 @@
 
 package be.dataminded.nifi.plugins;
 
+import be.dataminded.nifi.plugins.util.JdbcCommon;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import org.apache.commons.io.IOUtils;

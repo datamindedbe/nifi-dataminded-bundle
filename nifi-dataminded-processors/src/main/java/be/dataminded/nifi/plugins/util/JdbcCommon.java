@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package be.dataminded.nifi.plugins;
+package be.dataminded.nifi.plugins.util;
 
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
@@ -39,7 +39,7 @@ import static java.sql.Types.*;
 /**
  * JDBC / SQL common functions.
  */
-class JdbcCommon {
+public class JdbcCommon {
 
     private static final int MAX_DIGITS_IN_BIGINT = 19;
 
