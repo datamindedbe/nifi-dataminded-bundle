@@ -39,6 +39,7 @@ import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.util.StopWatch;
 
+import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -69,8 +70,8 @@ public class ExecuteOracleSQL extends AbstractProcessor {
     static final PropertyDescriptor DBCP_SERVICE;
     static final PropertyDescriptor SQL_SELECT_QUERY;
     static final PropertyDescriptor QUERY_TIMEOUT;
-    static final PropertyDescriptor NORMALIZE_NAMES_FOR_AVRO;
-    static final PropertyDescriptor FETCH_SIZE;
+    private static final PropertyDescriptor NORMALIZE_NAMES_FOR_AVRO;
+    private static final PropertyDescriptor FETCH_SIZE;
 
     @OnScheduled
     public void setup(ProcessContext context) {
@@ -111,7 +112,7 @@ public class ExecuteOracleSQL extends AbstractProcessor {
             // If the query is not set, then an incoming flow file is required, and expected to contain a valid SQL select query.
             // If there is no incoming connection, onTrigger will not be called as the processor will fail when scheduled.
             final StringBuilder queryContents = new StringBuilder();
-            session.read(fileToProcess, in -> queryContents.append(IOUtils.toString(in)));
+            session.read(fileToProcess, in -> queryContents.append(IOUtils.toString(in, Charset.defaultCharset())));
             selectQuery = queryContents.toString();
         }
 
