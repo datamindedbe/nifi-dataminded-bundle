@@ -4,6 +4,8 @@
 
 `mvn clean install` and copy the `nifi-dataminded-processors-nar-1.0-SNAPSHOT.nar` to the `lib` folder of your Nifi installation.
 
+`mvn -DpushChanges=false -DlocalCheckout=true -DpreparationGoals=initialize release:prepare release:perform` to create a release
+
 ## Processors
 ### SimpleTriggeredProcessExecutor
 Modified version of `ExecuteProcess`. This processor allows input and you can use expression language on the parameters. The attributes from the incoming FlowFile can be used as arguments of the external tool that you want to call
@@ -20,3 +22,4 @@ In end the processor will generate queries like this:
 ``` sql
 SELECT * FROM MYTABLE WHERE ID BETWEEN 5295378 AND 10590758
 ```
+
