@@ -51,7 +51,7 @@
     </dependencyManagement>
 
     <scm>
-        <developerConnection>scm:git:ssh://git@github.com:datamindedbe/nifi-dataminded-bundle.git</developerConnection>
+        <developerConnection>scm:git:https://github.com/datamindedbe/nifi-dataminded-bundle.git</developerConnection>
         <tag>HEAD</tag>
     </scm>
 
