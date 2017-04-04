@@ -49,8 +49,10 @@ import java.util.concurrent.TimeUnit;
         @WritesAttribute(attribute = "tenant.name", description = "Hint for which tenant this data is ingested"),
         @WritesAttribute(attribute = "source.name", description = "Hint for which source this data is ingested"),
         @WritesAttribute(attribute = "schema.name", description = "Hint for which schema this data is ingested"),
-        @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
-})
+        @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated"),
+        @WritesAttribute(attribute = "optionalToNumber.name", description = "option if the split column has to be cast to a number")
+
+        })
 public class GenerateOracleTableFetch extends AbstractProcessor {
 
     static final Relationship REL_SUCCESS;
@@ -66,6 +68,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor SOURCE;
     static final PropertyDescriptor SCHEMA;
 
+    static final PropertyDescriptor OPTION_TO_NUMBER;
+
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
         final ComponentLog logger = getLogger();
@@ -77,13 +81,19 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
         final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
+        final boolean optionalToNumber = context.getProperty(OPTION_TO_NUMBER).asBoolean();
 
         try {
-            String selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s",
-                                               splitColumnName,
-                                               splitColumnName,
-                                               schema,
-                                               tableName);
+
+            String queryStatement = "SELECT MIN(TO_NUMBER(%s)), MAX(TO_NUMBER(%s)), COUNT(*) FROM %s.%s";
+            if(optionalToNumber) queryStatement = "SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s";
+
+            String selectQuery = String.format(queryStatement,
+                    splitColumnName,
+                    splitColumnName,
+                    schema,
+                    tableName);
+
             long low, high, numberOfRecords;
 
             // Fetch metadata from the database //
@@ -177,7 +187,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                                 SPLIT_COLUMN,
                                 TENANT,
                                 SOURCE,
-                                SCHEMA);
+                                SCHEMA,
+                                OPTION_TO_NUMBER);
     }
 
     static {
@@ -258,6 +269,16 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .required(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .description("Hint for which schema this data is ingested")
+                .build();
+
+        OPTION_TO_NUMBER = new PropertyDescriptor.Builder()
+                .name("optionalToNumber")
+                .displayName("Optional to number")
+                .defaultValue("false")
+                .required(false)
+                .allowableValues("true", "false")
+                .addValidator(StandardValidators.BOOLEAN_VALIDATOR)
+                .description("option if the split column has to be cast to a number")
                 .build();
     }
 }
