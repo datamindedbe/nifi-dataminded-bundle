@@ -85,8 +85,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
         try {
 
-            String queryStatement = "SELECT MIN(TO_NUMBER(%s)), MAX(TO_NUMBER(%s)), COUNT(*) FROM %s.%s";
-            if(optionalToNumber) {queryStatement = "SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s";}
+            String queryStatement = "SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s";
+            if(optionalToNumber) {queryStatement = "SELECT MIN(TO_NUMBER(%s)), MAX(TO_NUMBER(%s)), COUNT(*) FROM %s.%s";}
 
             String selectQuery = String.format(queryStatement,
                     splitColumnName,
