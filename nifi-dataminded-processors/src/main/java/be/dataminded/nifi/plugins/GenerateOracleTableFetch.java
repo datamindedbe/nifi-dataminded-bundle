@@ -50,7 +50,7 @@ import java.util.concurrent.TimeUnit;
         @WritesAttribute(attribute = "source.name", description = "Hint for which source this data is ingested"),
         @WritesAttribute(attribute = "schema.name", description = "Hint for which schema this data is ingested"),
         @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated"),
-        @WritesAttribute(attribute = "optionalToNumber.name", description = "option if the split column has to be cast to a number")
+        @WritesAttribute(attribute = "table.totalCount", description = "the count of the complete table")
 
         })
 public class GenerateOracleTableFetch extends AbstractProcessor {
@@ -133,6 +133,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 FlowFile sqlFlowFile = session.create();
                 sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
+
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "table.totalCount", String.valueOf(numberOfRecords));
 
                 String tenant = context.getProperty(TENANT).getValue();
                 String source = context.getProperty(SOURCE).getValue();
