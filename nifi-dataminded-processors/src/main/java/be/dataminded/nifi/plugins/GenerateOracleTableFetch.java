@@ -44,14 +44,12 @@ import java.util.concurrent.TimeUnit;
 
 @Tags({"database", "sql", "table", "dataminded"})
 @CapabilityDescription("Generate queries to extract all data from database tables")
-@WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
 @WritesAttributes({
         @WritesAttribute(attribute = "tenant.name", description = "Hint for which tenant this data is ingested"),
         @WritesAttribute(attribute = "source.name", description = "Hint for which source this data is ingested"),
         @WritesAttribute(attribute = "schema.name", description = "Hint for which schema this data is ingested"),
         @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated"),
-        @WritesAttribute(attribute = "table.totalCount", description = "the count of the complete table")
-
+        @WritesAttribute(attribute = "generateoracletablefetch.total.row.count", description = "the count of the complete table")
         })
 public class GenerateOracleTableFetch extends AbstractProcessor {
 
@@ -135,7 +133,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
 
-                sqlFlowFile = session.putAttribute(sqlFlowFile, "table.totalCount", String.valueOf(numberOfRecords));
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "generateoracletablefetch.total.row.count", String.valueOf(numberOfRecords));
 
                 String tenant = context.getProperty(TENANT).getValue();
                 String source = context.getProperty(SOURCE).getValue();
