@@ -39,6 +39,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 
@@ -49,7 +50,11 @@ import java.util.concurrent.TimeUnit;
         @WritesAttribute(attribute = "source.name", description = "Hint for which source this data is ingested"),
         @WritesAttribute(attribute = "schema.name", description = "Hint for which schema this data is ingested"),
         @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated"),
-        @WritesAttribute(attribute = "generateoracletablefetch.total.row.count", description = "the count of the complete table")
+        @WritesAttribute(attribute = "generateoracletablefetch.total.row.count", description = "the count of the complete table"),
+        @WritesAttribute(attribute = "fragment.identifier", description = "All split FlowFiles produced from this query will have the same randomly generated UUID added for this attribute"),
+        @WritesAttribute(attribute = "fragment.index", description = "A one-up number that indicates the ordering of the split FlowFiles that were created from a single parent FlowFile"),
+        @WritesAttribute(attribute = "fragment.count", description = "The number of split FlowFiles generated from the parent FlowFile"),
+        @WritesAttribute(attribute = "segment.original.filename ", description = "The filename for all flowFiles (defragment expects this)")
         })
 public class GenerateOracleTableFetch extends AbstractProcessor {
 
@@ -119,6 +124,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
             long chunks = Math.min(numberOfFetches, numberOfRecords);
             long chunkSize = (high - low) / Math.max(chunks, 1);
+            final String fragmentIdentifier = UUID.randomUUID().toString();
             for (int i = 0; i < chunks; i++) {
                 long min = (low + i * chunkSize);
                 long max = (i == chunks - 1) ? high : Math.min((i + 1) * chunkSize - 1 + low, high);
@@ -134,6 +140,11 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
 
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "generateoracletablefetch.total.row.count", String.valueOf(numberOfRecords));
+
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.identifier", fragmentIdentifier);
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.index", Integer.toString(i));
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "segment.original.filename", fragmentIdentifier);
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.count", Long.toString(chunks));
 
                 String tenant = context.getProperty(TENANT).getValue();
                 String source = context.getProperty(SOURCE).getValue();

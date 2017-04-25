@@ -2,3 +2,4 @@ be.dataminded.nifi.plugins.GenerateOracleTableFetch
 be.dataminded.nifi.plugins.ExecuteOracleSQL
 be.dataminded.nifi.plugins.UpdateAttributeREST
 be.dataminded.nifi.plugins.SimpleTriggeredProcessExecutor
+be.dataminded.nifi.plugins.PutCloudWatchMetricAndAlarm
