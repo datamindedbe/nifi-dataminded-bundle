@@ -30,6 +30,8 @@
     <modules>
         <module>nifi-dataminded-processors</module>
         <module>nifi-dataminded-processors-nar</module>
+        <module>nifi-dataminded-processors-aws</module>
+        <module>nifi-dataminded-processors-nar-aws</module>
     </modules>
 
     <dependencyManagement>
