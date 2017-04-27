@@ -91,10 +91,19 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             .addValidator(new StandardValidators.StringLengthValidator(1, 255))
             .build();
 
+    public static final PropertyDescriptor NAME_PREFIX_ALARM = new PropertyDescriptor.Builder()
+            .name("AlarmPrefixName")
+            .displayName("AlarmPrefixName")
+            .description("The prefix that will be used for the alarm name")
+            .required(true)
+            .defaultValue("INGRESS")
+            .addValidator(new StandardValidators.StringLengthValidator(1, 255))
+            .build();
+
 
     public static final List<PropertyDescriptor> properties =
             Collections.unmodifiableList(
-                    Arrays.asList(NAME_ELEMENT_TOTAL_COUNT, NAME_ELEMENT_TO_SUM, ENVIRONMENT, REGION, AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE,
+                    Arrays.asList(NAME_ELEMENT_TOTAL_COUNT, NAME_ELEMENT_TO_SUM, ENVIRONMENT, NAME_PREFIX_ALARM, REGION, AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE,
                             ENDPOINT_OVERRIDE, PROXY_HOST, PROXY_HOST_PORT)
             );
 
@@ -153,7 +162,7 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
 
             // The MergeContent controller will be configured to append the JSON content with commas
             // We have to surround this list with square brackets to become a valid JSON Array
-            String jsonContent = "["+flowFileContent+"]";
+            String jsonContent = "[" + flowFileContent + "]";
 
             JSONArray jsonArray = new JSONArray(jsonContent);
 
@@ -167,7 +176,7 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             }
             sumCount = counts.stream().mapToLong(Long::longValue).sum();
 
-            JSONObject firstElement = (JSONObject)jsonArray.get(0);
+            JSONObject firstElement = (JSONObject) jsonArray.get(0);
             totalTableCount = firstElement.getLong(context.getProperty(NAME_ELEMENT_TOTAL_COUNT).getValue());
             tableName = firstElement.getString(TABLE_NAME);
             schemaName = firstElement.getString(SCHEMA_NAME);
@@ -184,9 +193,12 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             session.transfer(flowFile, REL_FAILURE);
         }
 
-        try{
+        try {
 
-            datum.setMetricName("COUNT_"+tableName);
+            String environment = context.getProperty(ENVIRONMENT).getValue();
+            String alarmPrefix = context.getProperty(NAME_PREFIX_ALARM).getValue();
+
+            datum.setMetricName("COUNT_" + tableName);
             datum.setValue((double) sumCount);
             datum.setUnit("Count");
 
@@ -195,7 +207,7 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             dimensions.add(new Dimension().withName("tenantName").withValue(tenantName));
             dimensions.add(new Dimension().withName("sourceName").withValue(source));
             dimensions.add(new Dimension().withName("schemaName").withValue(schemaName));
-            dimensions.add(new Dimension().withName("environment").withValue(context.getProperty(ENVIRONMENT).getValue()));
+            dimensions.add(new Dimension().withName("environment").withValue(environment));
 
             datum.setDimensions(dimensions);
 
@@ -208,7 +220,7 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
 
             PutMetricAlarmRequest putMetricAlarmRequest = new PutMetricAlarmRequest()
                     .withMetricName(datum.getMetricName())
-                    .withAlarmName("ALARM_"+datum.getMetricName())
+                    .withAlarmName(environment + "_" + alarmPrefix + "_" + datum.getMetricName())
                     .withDimensions(dimensions)
                     .withComparisonOperator("")
                     .withNamespace("NIFI")
@@ -219,7 +231,7 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
                     //.withTreatMissingData("notBreaching") // aws java SDK has to be upgraded for this
                     .withComparisonOperator("LessThanThreshold")
                     .withActionsEnabled(false)
-                    .withAlarmDescription("The daily Count Alarm for table "+tableName);
+                    .withAlarmDescription("The daily Count Alarm for table " + tableName);
             putAlarmData(putMetricAlarmRequest);
 
             session.transfer(flowFile, REL_SUCCESS);
