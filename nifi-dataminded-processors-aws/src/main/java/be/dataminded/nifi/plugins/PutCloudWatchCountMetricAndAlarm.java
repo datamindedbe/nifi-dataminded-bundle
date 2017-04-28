@@ -88,6 +88,7 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             .description("The environment of this Nifi instance, this will be added to the dimension of the metric and the name of the alarm")
             .required(true)
             .defaultValue("ACC")
+            .allowableValues("ACC", "PRD")
             .addValidator(new StandardValidators.StringLengthValidator(1, 255))
             .build();
 
@@ -231,7 +232,9 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
                     //.withTreatMissingData("notBreaching") // aws java SDK has to be upgraded for this
                     .withComparisonOperator("LessThanThreshold")
                     .withActionsEnabled(false)
-                    .withAlarmDescription("The daily Count Alarm for table " + tableName);
+                    .withAlarmDescription("The daily Count Alarm for table " + tableName)
+                    .withActionsEnabled(true)
+                    .withAlarmActions("arn:aws:sns:eu-west-1:561010060099:NIFI-" + environment + "-METRIC-ALARM");
             putAlarmData(putMetricAlarmRequest);
 
             session.transfer(flowFile, REL_SUCCESS);
