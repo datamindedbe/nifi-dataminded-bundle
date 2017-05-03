@@ -21,7 +21,6 @@ import java.util.Collections;
 import java.util.List;
 
 import java.sql.Timestamp;
-import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -78,18 +77,14 @@ public class ArgumentUtils {
 
 
     public static Timestamp convertStringToTimestamp(String str_date) {
+        // see http://stackoverflow.com/a/30341685
         try {
-            DateFormat formatter;
-            formatter = new SimpleDateFormat("yyyy-MM-dd");  //ISO-8601
-            Date date = formatter.parse(str_date);
-            java.sql.Timestamp timeStampDate = new Timestamp(date.getTime());
-
-            return timeStampDate;
+            String dateFormat = "yyyy-MM-dd"; //ISO-8601
+            SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
+            Date parsedDate = formatter.parse(str_date);
+            return new Timestamp(parsedDate.getTime());
         } catch (ParseException e) {
-            logger.error(
-                    "Something is very wrong here, one row (even if count is zero) should have been returned: {}",
-                    new Object[]{selectQuery});
-            System.out.println("Exception :" + e);
+            System.out.println("Could not parse '" + str_date + "' using the format  '" +dateFormat + "'.\n" + e);
             return null;
         }
     }

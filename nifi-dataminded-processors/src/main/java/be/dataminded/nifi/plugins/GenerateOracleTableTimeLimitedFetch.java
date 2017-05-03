@@ -69,7 +69,7 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
     static final PropertyDescriptor SOURCE;
     static final PropertyDescriptor SCHEMA;
 
-    private ResultSet runSafeQuery(String selectQuery, DBCPService dbcpService, Integer queryTimeout) {
+    private ResultSet runSafeQuery(String selectQuery, DBCPService dbcpService, Integer queryTimeout) throws ProcessException {
         final ComponentLog logger = getLogger();
         try (final Connection con = dbcpService.getConnection();
              final Statement statement = con.createStatement()) {
