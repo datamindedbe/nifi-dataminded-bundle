@@ -78,13 +78,13 @@ public class ArgumentUtils {
 
     public static Timestamp convertStringToTimestamp(String str_date) {
         // see http://stackoverflow.com/a/30341685
+        String dateFormat = "yyyy-MM-dd"; //ISO-8601
         try {
-            String dateFormat = "yyyy-MM-dd"; //ISO-8601
             SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
             Date parsedDate = formatter.parse(str_date);
             return new Timestamp(parsedDate.getTime());
         } catch (ParseException e) {
-            System.out.println("Could not parse '" + str_date + "' using the format  '" +dateFormat + "'.\n" + e);
+            System.out.println("Could not parse '" + str_date + "' using the format  '" + dateFormat + "'.\n" + e);
             return null;
         }
     }

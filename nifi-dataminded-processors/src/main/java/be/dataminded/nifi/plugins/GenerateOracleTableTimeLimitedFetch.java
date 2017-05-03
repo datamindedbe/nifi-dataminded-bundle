@@ -99,71 +99,48 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
         final String schema = context.getProperty(SCHEMA).getValue();
         final String columnNames = context.getProperty(COLUMN_NAMES).getValue();
         final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
-        final String minBound = context.getProperty(MIN_BOUND).getValue();
-        final String maxBound = context.getProperty(MAX_BOUND).getValue();
+        final java.sql.Timestamp minBound = ArgumentUtils.convertStringToTimestamp(context.getProperty(MIN_BOUND).getValue());
+        final java.sql.Timestamp maxBound = ArgumentUtils.convertStringToTimestamp(context.getProperty(MAX_BOUND).getValue());
         final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
 
         try {
-            java.sql.Timestamp low, high;
+            String selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s",
+                    splitColumnName,
+                    splitColumnName,
+                    schema,
+                    tableName);
             long numberOfRecords;
-            String selectQuery;
+            java.sql.Timestamp low, high;
 
-            if (minBound == null) {
-                if (maxBound == null) {
-                    selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s",
-                            splitColumnName,
-                            splitColumnName,
-                            schema,
-                            tableName);
-                    // Fetch metadata from the database //
-                    ResultSet resultSet = runSafeQuery(selectQuery, dbcpService, queryTimeout);
+            // Fetch metadata from the database //
+            try (final Connection con = dbcpService.getConnection();
+                 final Statement statement = con.createStatement()) {
+                statement.setQueryTimeout(queryTimeout);
+
+                logger.debug("Executing {}", new Object[]{selectQuery});
+                ResultSet resultSet = statement.executeQuery(selectQuery);
+                if (resultSet.next()) {
                     low = resultSet.getTimestamp(1);
                     high = resultSet.getTimestamp(2);
                     numberOfRecords = resultSet.getLong(3);
                 } else {
-                    selectQuery = String.format("SELECT MIN(%s), COUNT(*) FROM %s.%s WHERE %s <= '%s'", // TODO: use parameterized queries for safety
-                            splitColumnName,
-                            schema,
-                            tableName,
-                            splitColumnName,
-                            maxBound);
-                    // Fetch metadata from the database //
-                    ResultSet resultSet = runSafeQuery(selectQuery, dbcpService, queryTimeout);
-                    low = resultSet.getTimestamp(1);
-                    high = ArgumentUtils.convertStringToTimestamp(maxBound);
-                    numberOfRecords = resultSet.getLong(2);
+                    logger.error(
+                            "Something is very wrong here, one row (even if count is zero) should have been returned: {}",
+                            new Object[]{selectQuery});
+                    throw new SQLException("No rows returned from metadata query: " + selectQuery);
                 }
-            } else {
-                if (maxBound == null) {
-                    selectQuery = String.format("SELECT MAX(%s), COUNT(*) FROM %s.%s WHERE %s >= '%s'",
-                            splitColumnName,
-                            schema,
-                            tableName,
-                            splitColumnName,
-                            minBound);
-                    // Fetch metadata from the database //
-                    ResultSet resultSet = runSafeQuery(selectQuery, dbcpService, queryTimeout);
-                    low = ArgumentUtils.convertStringToTimestamp(minBound);
-                    high = resultSet.getLong(1);
-                    numberOfRecords = resultSet.getLong(2);
-                } else {
-                    selectQuery = String.format("SELECT COUNT(*) FROM %s.%s WHERE %s >= '%s' and %s <= '%s'",
-                            schema,
-                            tableName,
-                            splitColumnName,
-                            minBound,
-                            splitColumnName,
-                            maxBound);
-                    // Fetch metadata from the database //
-                    ResultSet resultSet = runSafeQuery(selectQuery, dbcpService, queryTimeout);
-                    low = ArgumentUtils.convertStringToTimestamp(minBound);
-                    high = ArgumentUtils.convertStringToTimestamp(maxBound);
-                    numberOfRecords = resultSet.getLong(1);
-                }
+            } catch (SQLException e) {
+                logger.error("Unable to execute SQL select query {} due to {}", new Object[]{selectQuery, e});
+                throw new ProcessException(e);
             }
 
-
+            if (minBound != null) {
+                low = minBound;
+            }
+            if (maxBound != null) {
+                high = maxBound;
+            }
 
             long chunks = Math.min(numberOfFetches, numberOfRecords);
             long chunkSize = (high.getTime() - low.getTime()) / Math.max(chunks, 1);
@@ -321,16 +298,18 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
 
         MIN_BOUND = new org.apache.nifi.components.PropertyDescriptor.Builder()
                 .name("Minimum boundary")
-                .description("Values in the split-column that are smaller than this threshold will be ignored. If empty, will not be filtered on a lower-bound. ")
+                .description("Values in the split-column that are smaller than this threshold will be ignored. "
+                             + "If no value is set, the split-column will not be filtered on a lower-bound. ")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build();
 
         MAX_BOUND = new org.apache.nifi.components.PropertyDescriptor.Builder()
                 .name("Maximum boundary")
-                .description("Values in the split-column that are larger than this threshold will be ignored. If empty, values will not be filtered on  a on an upper-bound.")
+                .description("Values in the split-column that are larger than this threshold will be ignored. "
+                             + "If no value is set, the split-column will not be filtered on  a on an upper-bound.")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-                .build();
+                .build(); // TODO: look into adding ISO8061_INSTANT_VALIDATOR
     }
 }
