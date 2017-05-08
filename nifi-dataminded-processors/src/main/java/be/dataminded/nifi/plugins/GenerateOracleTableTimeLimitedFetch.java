@@ -105,55 +105,61 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
 
         try {
-            String selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s",
-                    splitColumnName,
-                    splitColumnName,
-                    schema,
-                    tableName);
-            long numberOfRecords;
-            java.sql.Timestamp low, high;
+//            String selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s",
+//                    splitColumnName,
+//                    splitColumnName,
+//                    schema,
+//                    tableName);
+//            long numberOfRecords;
+//            java.sql.Timestamp low, high;
+//
+//            // Fetch metadata from the database //
+//            try (final Connection con = dbcpService.getConnection();
+//                 final Statement statement = con.createStatement()) {
+//                statement.setQueryTimeout(queryTimeout);
+//
+//                logger.debug("Executing {}", new Object[]{selectQuery});
+//                ResultSet resultSet = statement.executeQuery(selectQuery);
+//                if (resultSet.next()) {
+//                    low = resultSet.getTimestamp(1);
+//                    high = resultSet.getTimestamp(2);
+//                    numberOfRecords = resultSet.getLong(3);
+//                } else {
+//                    logger.error(
+//                            "Something is very wrong here, one row (even if count is zero) should have been returned: {}",
+//                            new Object[]{selectQuery});
+//                    throw new SQLException("No rows returned from metadata query: " + selectQuery);
+//                }
+//            } catch (SQLException e) {
+//                logger.error("Unable to execute SQL select query {} due to {}", new Object[]{selectQuery, e});
+//                throw new ProcessException(e);
+//            }
+//
+//            if (minBound != null) {
+//                low = minBound;
+//            }
+//            if (maxBound != null) {
+//                high = maxBound;
+//            }
 
-            // Fetch metadata from the database //
-            try (final Connection con = dbcpService.getConnection();
-                 final Statement statement = con.createStatement()) {
-                statement.setQueryTimeout(queryTimeout);
-
-                logger.debug("Executing {}", new Object[]{selectQuery});
-                ResultSet resultSet = statement.executeQuery(selectQuery);
-                if (resultSet.next()) {
-                    low = resultSet.getTimestamp(1);
-                    high = resultSet.getTimestamp(2);
-                    numberOfRecords = resultSet.getLong(3);
-                } else {
-                    logger.error(
-                            "Something is very wrong here, one row (even if count is zero) should have been returned: {}",
-                            new Object[]{selectQuery});
-                    throw new SQLException("No rows returned from metadata query: " + selectQuery);
-                }
-            } catch (SQLException e) {
-                logger.error("Unable to execute SQL select query {} due to {}", new Object[]{selectQuery, e});
-                throw new ProcessException(e);
-            }
-
-            if (minBound != null) {
-                low = minBound;
-            }
-            if (maxBound != null) {
-                high = maxBound;
-            }
-
-            long chunks = Math.min(numberOfFetches, numberOfRecords);
+//            long chunks = Math.min(numberOfFetches, numberOfRecords);
+            long chunks = numberOfFetches;
+            java.sql.Timestamp low = minBound;
+            java.sql.Timestamp high = maxBound;
             long chunkSize = (high.getTime() - low.getTime()) / Math.max(chunks, 1);
+            String dateformat = "YYYY-MM-DD HH24:MI:SS.FF3";  // Oracle syntax for ISO8601. Note that a oracle date can store up to seconds, but for milliseconds we need a timestamp.
             for (int i = 0; i < chunks; i++) {
                 java.sql.Timestamp min = new java.sql.Timestamp(low.getTime() + i * chunkSize);
                 java.sql.Timestamp max = (i == chunks - 1) ? high : new java.sql.Timestamp(Math.min((i + 1) * chunkSize - 1 + low.getTime(), high.getTime()));
-                String query = String.format("SELECT %s FROM %s.%s WHERE %s BETWEEN %s AND %s",
+                String query = String.format("SELECT %s FROM %s.%s WHERE %s BETWEEN TO_TIMESTAMP('%s', '%s') AND TO_TIMESTAMP('%s', '%s')",
                                              columnNames,
                                              schema,
                                              tableName,
                                              splitColumnName,
                                              min,
-                                             max);
+                                             dateformat,
+                                             max,
+                                             dateformat);
                 FlowFile sqlFlowFile = session.create();
                 sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
@@ -300,7 +306,7 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                 .name("Minimum boundary")
                 .description("Values in the split-column that are smaller than this threshold will be ignored. "
                              + "If no value is set, the split-column will not be filtered on a lower-bound. ")
-                .required(false)
+                .required(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build();
 
@@ -308,7 +314,7 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                 .name("Maximum boundary")
                 .description("Values in the split-column that are larger than this threshold will be ignored. "
                              + "If no value is set, the split-column will not be filtered on  a on an upper-bound.")
-                .required(false)
+                .required(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build(); // TODO: look into adding ISO8061_INSTANT_VALIDATOR
     }
