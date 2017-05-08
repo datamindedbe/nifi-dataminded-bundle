@@ -56,12 +56,11 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
 
     static final Relationship REL_SUCCESS;
 
-    static final PropertyDescriptor DBCP_SERVICE;
     static final PropertyDescriptor TABLE_NAME;
     static final PropertyDescriptor COLUMN_NAMES;
-    static final PropertyDescriptor QUERY_TIMEOUT;
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
     static final PropertyDescriptor SPLIT_COLUMN;
+    static final PropertyDescriptor TIME_FMT;
     static final PropertyDescriptor MIN_BOUND;
     static final PropertyDescriptor MAX_BOUND;
 
@@ -69,80 +68,25 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
     static final PropertyDescriptor SOURCE;
     static final PropertyDescriptor SCHEMA;
 
-    private ResultSet runSafeQuery(String selectQuery, DBCPService dbcpService, Integer queryTimeout) throws ProcessException {
-        final ComponentLog logger = getLogger();
-        try (final Connection con = dbcpService.getConnection();
-             final Statement statement = con.createStatement()) {
-            statement.setQueryTimeout(queryTimeout);
-
-            logger.debug("Executing {}", new Object[]{selectQuery});
-            ResultSet resultSet = statement.executeQuery(selectQuery);
-            if (resultSet.next()) {
-                return resultSet;
-            } else {
-                logger.error(
-                        "Something is very wrong here, one row (even if count is zero) should have been returned: {}",
-                        new Object[]{selectQuery});
-                throw new SQLException("No rows returned from metadata query: " + selectQuery);
-            }
-        } catch (SQLException e) {
-            logger.error("Unable to execute SQL select query {} due to {}", new Object[]{selectQuery, e});
-            throw new ProcessException(e);
-        }
-    }
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
         final ComponentLog logger = getLogger();
 
-        final DBCPService dbcpService = context.getProperty(DBCP_SERVICE).asControllerService(DBCPService.class);
         final String tableName = context.getProperty(TABLE_NAME).getValue();
         final String schema = context.getProperty(SCHEMA).getValue();
         final String columnNames = context.getProperty(COLUMN_NAMES).getValue();
         final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
-        final java.sql.Timestamp minBound = ArgumentUtils.convertStringToTimestamp(context.getProperty(MIN_BOUND).getValue());
-        final java.sql.Timestamp maxBound = ArgumentUtils.convertStringToTimestamp(context.getProperty(MAX_BOUND).getValue());
+        final String timeFormat = context.getProperty(TIME_FMT).getValue();
+        final java.sql.Timestamp minBound = ArgumentUtils.convertStringToTimestamp(
+                context.getProperty(MIN_BOUND).getValue(),
+                timeFormat);
+        final java.sql.Timestamp maxBound = ArgumentUtils.convertStringToTimestamp(
+                context.getProperty(MAX_BOUND).getValue(),
+                timeFormat);
         final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
-        final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
+
 
         try {
-//            String selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s",
-//                    splitColumnName,
-//                    splitColumnName,
-//                    schema,
-//                    tableName);
-//            long numberOfRecords;
-//            java.sql.Timestamp low, high;
-//
-//            // Fetch metadata from the database //
-//            try (final Connection con = dbcpService.getConnection();
-//                 final Statement statement = con.createStatement()) {
-//                statement.setQueryTimeout(queryTimeout);
-//
-//                logger.debug("Executing {}", new Object[]{selectQuery});
-//                ResultSet resultSet = statement.executeQuery(selectQuery);
-//                if (resultSet.next()) {
-//                    low = resultSet.getTimestamp(1);
-//                    high = resultSet.getTimestamp(2);
-//                    numberOfRecords = resultSet.getLong(3);
-//                } else {
-//                    logger.error(
-//                            "Something is very wrong here, one row (even if count is zero) should have been returned: {}",
-//                            new Object[]{selectQuery});
-//                    throw new SQLException("No rows returned from metadata query: " + selectQuery);
-//                }
-//            } catch (SQLException e) {
-//                logger.error("Unable to execute SQL select query {} due to {}", new Object[]{selectQuery, e});
-//                throw new ProcessException(e);
-//            }
-//
-//            if (minBound != null) {
-//                low = minBound;
-//            }
-//            if (maxBound != null) {
-//                high = maxBound;
-//            }
-
-//            long chunks = Math.min(numberOfFetches, numberOfRecords);
             long chunks = numberOfFetches;
             java.sql.Timestamp low = minBound;
             java.sql.Timestamp high = maxBound;
@@ -209,12 +153,11 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return ImmutableList.of(DBCP_SERVICE,
-                                TABLE_NAME,
+        return ImmutableList.of(TABLE_NAME,
                                 COLUMN_NAMES,
-                                QUERY_TIMEOUT,
                                 NUMBER_OF_PARTITIONS,
                                 SPLIT_COLUMN,
+                                TIME_FMT,
                                 MIN_BOUND,
                                 MAX_BOUND,
                                 TENANT,
@@ -226,13 +169,6 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
         REL_SUCCESS = new Relationship.Builder()
                 .name("success")
                 .description("Successfully created FlowFile from SQL query result set.")
-                .build();
-
-        DBCP_SERVICE = new org.apache.nifi.components.PropertyDescriptor.Builder()
-                .name("Database Connection Pooling Service")
-                .description("The Controller Service that is used to obtain a connection to the database.")
-                .required(true)
-                .identifiesControllerService(DBCPService.class)
                 .build();
 
         TABLE_NAME = new org.apache.nifi.components.PropertyDescriptor.Builder()
@@ -248,15 +184,6 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                 .required(false)
                 .defaultValue("*")
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-                .build();
-
-        QUERY_TIMEOUT = new org.apache.nifi.components.PropertyDescriptor.Builder()
-                .name("Max Wait Time")
-                .description(
-                        "The maximum amount of time allowed for a running SQL select query , zero means there is no limit. Max time less than 1 second will be equal to zero.")
-                .defaultValue("0 seconds")
-                .required(true)
-                .addValidator(StandardValidators.TIME_PERIOD_VALIDATOR)
                 .build();
 
         NUMBER_OF_PARTITIONS = new org.apache.nifi.components.PropertyDescriptor.Builder()
@@ -315,6 +242,14 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                 .description("Values in the split-column that are larger than this threshold will be ignored. "
                              + "If no value is set, the split-column will not be filtered on  a on an upper-bound.")
                 .required(true)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .build(); // TODO: look into adding ISO8061_INSTANT_VALIDATOR
+
+        TIME_FMT = new org.apache.nifi.components.PropertyDescriptor.Builder()
+                .name("Time format")
+                .description("A valid Oracle time format specification, with which the minimum and maximum boundary will be interpreted.")
+                .required(false)
+                .defaultValue("yyyy-MM-dd")
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build(); // TODO: look into adding ISO8061_INSTANT_VALIDATOR
     }

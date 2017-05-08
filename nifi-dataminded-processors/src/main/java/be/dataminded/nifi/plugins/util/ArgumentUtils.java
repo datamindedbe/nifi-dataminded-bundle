@@ -76,9 +76,9 @@ public class ArgumentUtils {
 
 
 
-    public static Timestamp convertStringToTimestamp(String str_date) {
+    public static Timestamp convertStringToTimestamp(String str_date, String dateFormat) {
         // see http://stackoverflow.com/a/30341685
-        String dateFormat = "yyyy-MM-dd"; //ISO-8601
+
         try {
             SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
             Date parsedDate = formatter.parse(str_date);
