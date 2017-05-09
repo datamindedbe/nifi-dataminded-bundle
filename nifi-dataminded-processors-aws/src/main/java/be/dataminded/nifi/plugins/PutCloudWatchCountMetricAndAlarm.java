@@ -101,10 +101,57 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             .addValidator(new StandardValidators.StringLengthValidator(1, 255))
             .build();
 
+    public static final PropertyDescriptor ALARM_STATISTIC = new PropertyDescriptor.Builder()
+            .name("AlarmStatistic")
+            .displayName("AlarmStatistic")
+            .description("The statistic that will be used by the alarm")
+            .required(true)
+            .defaultValue("Sum")
+            .allowableValues("Sum", "Minimum", "Maximum", "Average", "SampleCount")
+            .addValidator(new StandardValidators.StringLengthValidator(1, 255))
+            .build();
+
+    public static final PropertyDescriptor ALARM_PERIOD = new PropertyDescriptor.Builder()
+            .name("AlarmPeriod")
+            .displayName("AlarmPeriod")
+            .description("The period over which the alarm will look to validate, in seconds")
+            .required(true)
+            .defaultValue("43200")
+            .addValidator(StandardValidators.NON_NEGATIVE_INTEGER_VALIDATOR)
+            .build();
+
+    public static final PropertyDescriptor ALARM_EVALUATE_PERIODS = new PropertyDescriptor.Builder()
+            .name("EvaluationPeriods")
+            .displayName("EvaluationPeriods")
+            .description("The number of periods over which data is compared to the specified threshold.")
+            .required(true)
+            .defaultValue("1")
+            .addValidator(StandardValidators.NON_NEGATIVE_INTEGER_VALIDATOR)
+            .build();
+
+    public static final PropertyDescriptor ALARM_COMPARISON_OPERATOR = new PropertyDescriptor.Builder()
+            .name("AlarmComparisonOperator")
+            .displayName("AlarmComparisonOperator")
+            .description("The arithmetic operation to use when comparing the specified statistic and threshold. ")
+            .required(true)
+            .defaultValue("LessThanThreshold")
+            .allowableValues("GreaterThanOrEqualToThreshold", "GreaterThanThreshold", "LessThanThreshold", "LessThanOrEqualToThreshold")
+            .addValidator(new StandardValidators.StringLengthValidator(1, 255))
+            .build();
+    public static final PropertyDescriptor ALARM_ACTION = new PropertyDescriptor.Builder()
+            .name("AlarmAction")
+            .displayName("AlarmAction")
+            .description("The action to execute when this alarm transitions to the ALARM state from any other state.")
+            .required(true)
+            .defaultValue("arn:aws:sns:eu-west-1:561010060099:NIFI-ACC-METRIC-ALARM")
+            .addValidator(new StandardValidators.StringLengthValidator(1, 255))
+            .build();
 
     public static final List<PropertyDescriptor> properties =
             Collections.unmodifiableList(
-                    Arrays.asList(NAME_ELEMENT_TOTAL_COUNT, NAME_ELEMENT_TO_SUM, ENVIRONMENT, NAME_PREFIX_ALARM, REGION, AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE,
+                    Arrays.asList(NAME_ELEMENT_TOTAL_COUNT, NAME_ELEMENT_TO_SUM, ENVIRONMENT, NAME_PREFIX_ALARM,
+                            ALARM_STATISTIC, ALARM_PERIOD, ALARM_EVALUATE_PERIODS, ALARM_COMPARISON_OPERATOR,
+                            ALARM_ACTION, REGION, AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE,
                             ENDPOINT_OVERRIDE, PROXY_HOST, PROXY_HOST_PORT)
             );
 
@@ -219,22 +266,26 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
 
             putMetricData(metricDataRequest);
 
+            String comparisonOperator = context.getProperty(ALARM_COMPARISON_OPERATOR).getValue();
+            String alarmStatistic = context.getProperty(ALARM_STATISTIC).getValue();
+            String alarmPeriod = context.getProperty(ALARM_PERIOD).getValue();
+            String alarmEvaluatePeriods = context.getProperty(ALARM_EVALUATE_PERIODS).getValue();
+            String alarmAction = context.getProperty(ALARM_ACTION).getValue();
+
             PutMetricAlarmRequest putMetricAlarmRequest = new PutMetricAlarmRequest()
                     .withMetricName(datum.getMetricName())
                     .withAlarmName(environment + "_" + alarmPrefix + "_" + datum.getMetricName())
                     .withDimensions(dimensions)
-                    .withComparisonOperator("")
+                    .withComparisonOperator(comparisonOperator)
                     .withNamespace("NIFI")
-                    .withStatistic("Sum")
-                    .withPeriod(86400)
-                    .withEvaluationPeriods(1)
+                    .withStatistic(alarmStatistic)
+                    .withPeriod(Integer.parseInt(alarmPeriod))
+                    .withEvaluationPeriods(Integer.parseInt(alarmEvaluatePeriods))
                     .withThreshold((double) totalTableCount)
                     //.withTreatMissingData("notBreaching") // aws java SDK has to be upgraded for this
-                    .withComparisonOperator("LessThanThreshold")
-                    .withActionsEnabled(false)
                     .withAlarmDescription("The daily Count Alarm for table " + tableName)
                     .withActionsEnabled(true)
-                    .withAlarmActions("arn:aws:sns:eu-west-1:561010060099:NIFI-" + environment + "-METRIC-ALARM");
+                    .withAlarmActions(alarmAction);
             putAlarmData(putMetricAlarmRequest);
 
             session.transfer(flowFile, REL_SUCCESS);
