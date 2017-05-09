@@ -101,10 +101,11 @@ public class SimpleTriggeredProcessExecutor extends AbstractProcessor {
             return;
         }
 
+        StringBuffer exitcode = new StringBuffer();
         final List<String> commandStrings = createCommandStrings(context, flowFile.getAttributes());
         flowFile = session.write(flowFile, out -> {
             try {
-                new ProcessExecutor(commandStrings).redirectOutput(out).redirectError(out).destroyOnExit().execute();
+                exitcode.append(new ProcessExecutor(commandStrings).redirectOutput(out).redirectError(out).destroyOnExit().execute().getExitValue());
             } catch (InterruptedException e) {
                 logger.warn("The external process was interrupted", e);
             } catch (TimeoutException e) {
@@ -112,7 +113,11 @@ public class SimpleTriggeredProcessExecutor extends AbstractProcessor {
             }
         });
 
-        session.transfer(flowFile, SUCCESS);
+        if(exitcode.toString().equals("0")) {
+            session.transfer(flowFile, SUCCESS);
+        } else {
+            session.transfer(flowFile, FAILURE);
+        }
     }
 
     private List<String> createCommandStrings(final ProcessContext context, final Map<String, String> attributes) {
