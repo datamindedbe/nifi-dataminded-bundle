@@ -147,11 +147,20 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             .addValidator(new StandardValidators.StringLengthValidator(1, 255))
             .build();
 
+    public static final PropertyDescriptor SLEEP_PERIOD = new PropertyDescriptor.Builder()
+            .name("SleepPeriod")
+            .displayName("SleepPeriod")
+            .description("The amount the processor will sleep between posting the metric and the alarm (in millis)")
+            .required(true)
+            .defaultValue("300000")
+            .addValidator(new StandardValidators.StringLengthValidator(1, 255))
+            .build();
+
     public static final List<PropertyDescriptor> properties =
             Collections.unmodifiableList(
                     Arrays.asList(NAME_ELEMENT_TOTAL_COUNT, NAME_ELEMENT_TO_SUM, ENVIRONMENT, NAME_PREFIX_ALARM,
                             ALARM_STATISTIC, ALARM_PERIOD, ALARM_EVALUATE_PERIODS, ALARM_COMPARISON_OPERATOR,
-                            ALARM_ACTION, REGION, AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE,
+                            ALARM_ACTION, SLEEP_PERIOD, REGION, AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE,
                             ENDPOINT_OVERRIDE, PROXY_HOST, PROXY_HOST_PORT)
             );
 
@@ -265,6 +274,11 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
                     .withMetricData(datum);
 
             putMetricData(metricDataRequest);
+
+            // we wait for a couple of minutes to give Cloudwatch some time to register the metric first
+            // else the alarm will always go in ALARM before returning to OK after a minute or so
+            long sleepPeriod = context.getProperty(SLEEP_PERIOD).asLong();
+            Thread.sleep(sleepPeriod);
 
             String comparisonOperator = context.getProperty(ALARM_COMPARISON_OPERATOR).getValue();
             String alarmStatistic = context.getProperty(ALARM_STATISTIC).getValue();
