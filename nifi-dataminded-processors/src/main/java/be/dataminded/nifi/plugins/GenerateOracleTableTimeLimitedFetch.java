@@ -60,6 +60,7 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
     static final PropertyDescriptor COLUMN_NAMES;
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
     static final PropertyDescriptor SPLIT_COLUMN;
+    static final PropertyDescriptor WHERE_CLAUSE;
     static final PropertyDescriptor TIME_FMT;
     static final PropertyDescriptor MIN_BOUND;
     static final PropertyDescriptor MAX_BOUND;
@@ -75,6 +76,7 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
         final String tableName = context.getProperty(TABLE_NAME).getValue();
         final String schema = context.getProperty(SCHEMA).getValue();
         final String columnNames = context.getProperty(COLUMN_NAMES).getValue();
+        final String whereClause = context.getProperty(WHERE_CLAUSE).getValue();
         final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
         final String timeFormat = context.getProperty(TIME_FMT).getValue();
         final java.sql.Timestamp minBound = ArgumentUtils.convertStringToTimestamp(
@@ -92,10 +94,15 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
             java.sql.Timestamp high = maxBound;
             long chunkSize = (high.getTime() - low.getTime()) / Math.max(chunks, 1);
             String dateformat = "YYYY-MM-DD HH24:MI:SS.FF3";  // Oracle syntax for ISO8601. Note that a oracle date can store up to seconds, but for milliseconds we need a timestamp.
+
+            String query = "SELECT %s FROM %s.%s WHERE %s BETWEEN TO_TIMESTAMP('%s', '%s') AND TO_TIMESTAMP('%s', '%s')";
+            if (whereClause.length() > 0) {
+                query = query.concat(String.format(" AND %s", whereClause));
+            }
             for (int i = 0; i < chunks; i++) {
                 java.sql.Timestamp min = new java.sql.Timestamp(low.getTime() + i * chunkSize);
                 java.sql.Timestamp max = (i == chunks - 1) ? high : new java.sql.Timestamp(Math.min((i + 1) * chunkSize - 1 + low.getTime(), high.getTime()));
-                String query = String.format("SELECT %s FROM %s.%s WHERE %s BETWEEN TO_TIMESTAMP('%s', '%s') AND TO_TIMESTAMP('%s', '%s')",
+                String querf = String.format(query,
                                              columnNames,
                                              schema,
                                              tableName,
@@ -104,8 +111,9 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                                              dateformat,
                                              max,
                                              dateformat);
+
                 FlowFile sqlFlowFile = session.create();
-                sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
+                sqlFlowFile = session.write(sqlFlowFile, out -> out.write(querf.getBytes()));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
 
                 String tenant = context.getProperty(TENANT).getValue();
@@ -162,7 +170,8 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                                 MAX_BOUND,
                                 TENANT,
                                 SOURCE,
-                                SCHEMA);
+                                SCHEMA,
+                                WHERE_CLAUSE);
     }
 
     static {
@@ -250,6 +259,12 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                 .description("A valid Oracle time format specification, with which the minimum and maximum boundary will be interpreted.")
                 .required(false)
                 .defaultValue("yyyy-MM-dd")
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .build(); // TODO: look into adding ISO8061_INSTANT_VALIDATOR
+        WHERE_CLAUSE = new org.apache.nifi.components.PropertyDescriptor.Builder()
+                .name("Where clause")
+                .description("Optional conditional statements to be added to the query")
+                .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build(); // TODO: look into adding ISO8061_INSTANT_VALIDATOR
     }
