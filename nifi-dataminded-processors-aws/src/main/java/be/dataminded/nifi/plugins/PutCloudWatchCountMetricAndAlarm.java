@@ -138,6 +138,7 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             .allowableValues("GreaterThanOrEqualToThreshold", "GreaterThanThreshold", "LessThanThreshold", "LessThanOrEqualToThreshold")
             .addValidator(new StandardValidators.StringLengthValidator(1, 255))
             .build();
+
     public static final PropertyDescriptor ALARM_ACTION = new PropertyDescriptor.Builder()
             .name("AlarmAction")
             .displayName("AlarmAction")
@@ -147,20 +148,11 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             .addValidator(new StandardValidators.StringLengthValidator(1, 255))
             .build();
 
-    public static final PropertyDescriptor SLEEP_PERIOD = new PropertyDescriptor.Builder()
-            .name("SleepPeriod")
-            .displayName("SleepPeriod")
-            .description("The amount the processor will sleep between posting the metric and the alarm (in millis)")
-            .required(true)
-            .defaultValue("300000")
-            .addValidator(new StandardValidators.StringLengthValidator(1, 255))
-            .build();
-
     public static final List<PropertyDescriptor> properties =
             Collections.unmodifiableList(
                     Arrays.asList(NAME_ELEMENT_TOTAL_COUNT, NAME_ELEMENT_TO_SUM, ENVIRONMENT, NAME_PREFIX_ALARM,
                             ALARM_STATISTIC, ALARM_PERIOD, ALARM_EVALUATE_PERIODS, ALARM_COMPARISON_OPERATOR,
-                            ALARM_ACTION, SLEEP_PERIOD, REGION, AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE,
+                            ALARM_ACTION, REGION, AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE,
                             ENDPOINT_OVERRIDE, PROXY_HOST, PROXY_HOST_PORT)
             );
 
@@ -201,7 +193,6 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
         if (flowFile == null) {
             return;
         }
-        MetricDatum datum = new MetricDatum();
 
         long totalTableCount = 0;
         long sumCount = 0;
@@ -255,9 +246,12 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             String environment = context.getProperty(ENVIRONMENT).getValue();
             String alarmPrefix = context.getProperty(NAME_PREFIX_ALARM).getValue();
 
-            datum.setMetricName("COUNT_" + tableName);
-            datum.setValue((double) sumCount);
-            datum.setUnit("Count");
+            Map<String, Long> metrics = new HashMap<>();
+            // first metric: this is the total count of the records that were exported
+            metrics.put("COUNT_", sumCount);
+            // second metric: this is the difference between the records exported
+            // and the total amount of records counted in the DB, should always be 0 !!!
+            metrics.put("DIFF_", Math.abs(totalTableCount-sumCount));
 
             ArrayList<Dimension> dimensions = new ArrayList<>();
             dimensions.add(new Dimension().withName("tableName").withValue(tableName));
@@ -266,20 +260,21 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             dimensions.add(new Dimension().withName("schemaName").withValue(schemaName));
             dimensions.add(new Dimension().withName("environment").withValue(environment));
 
-            datum.setDimensions(dimensions);
+            for(Map.Entry<String, Long> metric : metrics.entrySet()) {
+                MetricDatum datum = new MetricDatum();
+                datum.setMetricName(metric.getKey() + tableName);
+                datum.setValue((double) metric.getValue());
+                datum.setUnit("Count");
+                datum.setDimensions(dimensions);
 
+                final PutMetricDataRequest metricDataRequest = new PutMetricDataRequest()
+                        .withNamespace("NIFI")
+                        .withMetricData(datum);
 
-            final PutMetricDataRequest metricDataRequest = new PutMetricDataRequest()
-                    .withNamespace("NIFI")
-                    .withMetricData(datum);
+                putMetricData(metricDataRequest);
+            }
 
-            putMetricData(metricDataRequest);
-
-            // we wait for a couple of minutes to give Cloudwatch some time to register the metric first
-            // else the alarm will always go in ALARM before returning to OK after a minute or so
-            long sleepPeriod = context.getProperty(SLEEP_PERIOD).asLong();
-            Thread.sleep(sleepPeriod);
-
+            // the alarm we create is a static one that will check if the diff is zero
             String comparisonOperator = context.getProperty(ALARM_COMPARISON_OPERATOR).getValue();
             String alarmStatistic = context.getProperty(ALARM_STATISTIC).getValue();
             String alarmPeriod = context.getProperty(ALARM_PERIOD).getValue();
@@ -287,15 +282,15 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             String alarmAction = context.getProperty(ALARM_ACTION).getValue();
 
             PutMetricAlarmRequest putMetricAlarmRequest = new PutMetricAlarmRequest()
-                    .withMetricName(datum.getMetricName())
-                    .withAlarmName(environment + "_" + alarmPrefix + "_" + datum.getMetricName())
+                    .withMetricName("DIFF_" + tableName)
+                    .withAlarmName(environment + "_" + alarmPrefix + "_" + "DIFF_" + tableName)
                     .withDimensions(dimensions)
                     .withComparisonOperator(comparisonOperator)
                     .withNamespace("NIFI")
                     .withStatistic(alarmStatistic)
                     .withPeriod(Integer.parseInt(alarmPeriod))
                     .withEvaluationPeriods(Integer.parseInt(alarmEvaluatePeriods))
-                    .withThreshold((double) totalTableCount)
+                    .withThreshold((double) 0)
                     //.withTreatMissingData("notBreaching") // aws java SDK has to be upgraded for this
                     .withAlarmDescription("The daily Count Alarm for table " + tableName)
                     .withActionsEnabled(true)
