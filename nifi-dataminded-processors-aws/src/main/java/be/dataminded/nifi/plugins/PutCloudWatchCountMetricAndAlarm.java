@@ -251,7 +251,11 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             metrics.put("COUNT_", sumCount);
             // second metric: this is the difference between the records exported
             // and the total amount of records counted in the DB, should always be 0 !!!
-            metrics.put("DIFF_", Math.abs(totalTableCount - sumCount));
+            // we take a margin into account because we can't be sure there won't be any deletes
+            // between counting and executing the queries
+            long diff = Math.abs(totalTableCount - sumCount);
+            double diffProcent = Math.round((diff / totalTableCount) * 1000);
+            metrics.put("DIFF_", (long) diffProcent);
 
             ArrayList<Dimension> dimensions = new ArrayList<>();
             dimensions.add(new Dimension().withName("tableName").withValue(tableName));
