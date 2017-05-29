@@ -18,11 +18,15 @@ package be.dataminded.nifi.plugins;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import org.apache.nifi.annotation.behavior.Stateful;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.components.state.Scope;
+import org.apache.nifi.components.state.StateManager;
+import org.apache.nifi.components.state.StateMap;
 import org.apache.nifi.dbcp.DBCPService;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
@@ -32,18 +36,27 @@ import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
+import org.apache.nifi.util.StringUtils;
 
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 
 @Tags({"database", "sql", "table", "dataminded"})
 @CapabilityDescription("Generate queries to extract all data from database tables")
+@Stateful(scopes = Scope.CLUSTER, description = "After performing a query on the specified table, the maximum values for "
+        + "the specified column(s) will be retained for use in future executions of the query. This allows the Processor "
+        + "to fetch only those records that have max values greater than the retained values. This can be used for "
+        + "incremental fetching, fetching of newly added rows, etc. To clear the maximum values, clear the state of the processor "
+        + "per the State Management documentation")
 @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
 @WritesAttributes({
         @WritesAttribute(attribute = "tenant.name", description = "Hint for which tenant this data is ingested"),
@@ -58,6 +71,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor DBCP_SERVICE;
     static final PropertyDescriptor TABLE_NAME;
     static final PropertyDescriptor COLUMN_NAMES;
+    static final PropertyDescriptor MAX_VALUE_COLUMN_NAME;
     static final PropertyDescriptor QUERY_TIMEOUT;
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
     static final PropertyDescriptor SPLIT_COLUMN;
@@ -65,6 +79,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor TENANT;
     static final PropertyDescriptor SOURCE;
     static final PropertyDescriptor SCHEMA;
+
 
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
@@ -74,9 +89,22 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final String tableName = context.getProperty(TABLE_NAME).getValue();
         final String schema = context.getProperty(SCHEMA).getValue();
         final String columnNames = context.getProperty(COLUMN_NAMES).getValue();
+        final String maxValueColumnName = context.getProperty(MAX_VALUE_COLUMN_NAME).getValue();
         final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
         final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
+
+        final StateManager stateManager = context.getStateManager();
+        final StateMap stateMap;
+
+        try {
+            stateMap = stateManager.getState(Scope.CLUSTER);
+        } catch (final IOException ioe) {
+            logger.error("Failed to retrieve observed maximum values from the State Manager. Will not perform "
+                    + "query until this is accomplished.", ioe);
+            context.yield();
+            return;
+        }
 
         try {
             String selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s",
@@ -84,6 +112,18 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                                                splitColumnName,
                                                schema,
                                                tableName);
+
+            if(!StringUtils.isEmpty(maxValueColumnName)) {
+                // Make a mutable copy of the current state property map. This will be updated by the result row callback, and eventually
+                // set as the current state map (after the session has been committed)
+                final Map<String, String> statePropertyMap = new HashMap<>(stateMap.toMap());
+
+                final String fullyQualifiedStateKey = getStateKey(tableName, maxValueColumnName);
+                String maxValue = statePropertyMap.get(fullyQualifiedStateKey);
+
+                selectQuery = String.format("%s WHERE %s > %s", selectQuery, maxValueColumnName, value)
+            }
+
             long low, high, numberOfRecords;
 
             // Fetch metadata from the database //
@@ -153,6 +193,19 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         }
     }
 
+    private static String getStateKey(String prefix, String columnName) {
+
+        StringBuilder sb = new StringBuilder();
+        if (prefix != null) {
+            sb.append(prefix.toLowerCase());
+            sb.append("@!@");
+        }
+        if (columnName != null) {
+            sb.append(columnName.toLowerCase());
+        }
+        return sb.toString();
+    }
+
     private String sanitizeAttribute(String attribute) {
         if (attribute == null) {
             return null;
@@ -181,6 +234,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     }
 
     static {
+
+
         REL_SUCCESS = new Relationship.Builder()
                 .name("success")
                 .description("Successfully created FlowFile from SQL query result set.")
@@ -206,6 +261,19 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .required(false)
                 .defaultValue("*")
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .build();
+
+        MAX_VALUE_COLUMN_NAME = new PropertyDescriptor.Builder()
+                .name("Maximum-value Columns")
+                .description("A column name. The processor will keep track of the maximum value "
+                        + "for the column that has been returned since the processor started running. This processor "
+                        + "can be used to retrieve only those rows that have been added/updated since the last retrieval. Note that some "
+                        + "JDBC types such as bit/boolean are not conducive to maintaining maximum value, so columns of these "
+                        + "types should not be listed in this property, and will result in error(s) during processing. NOTE: It is important "
+                        + "to use consistent max-value column names for a given table for incremental fetch to work properly.")
+                .required(false)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .expressionLanguageSupported(true)
                 .build();
 
         QUERY_TIMEOUT = new org.apache.nifi.components.PropertyDescriptor.Builder()
@@ -249,7 +317,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .description("Hint for which source this data is ingested")
                 .build();
-
 
         SCHEMA = new PropertyDescriptor.Builder()
                 .name("schema")
