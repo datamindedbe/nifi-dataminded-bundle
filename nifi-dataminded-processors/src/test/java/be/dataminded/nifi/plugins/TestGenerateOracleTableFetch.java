@@ -103,7 +103,7 @@ public class TestGenerateOracleTableFetch {
 
     @Test
     @Ignore
-    public void testAddedRows() throws ClassNotFoundException, SQLException, InitializationException, IOException {
+    public void testGenerateFullTableLoad() throws ClassNotFoundException, SQLException, InitializationException, IOException {
         // load test data to database
         final Connection con = ((DBCPService) runner.getControllerService("dbcp")).getConnection();
         Statement stmt = con.createStatement();
@@ -125,7 +125,6 @@ public class TestGenerateOracleTableFetch {
         runner.setProperty(GenerateOracleTableFetch.TENANT, "TENANT");
         runner.setProperty(GenerateOracleTableFetch.SCHEMA, "APP");
         runner.setProperty(GenerateOracleTableFetch.SOURCE, "SOURCE");
-        runner.setProperty(GenerateOracleTableFetch.SPLIT_COLUMN, "ID");
         runner.setProperty(GenerateOracleTableFetch.NUMBER_OF_PARTITIONS, String.valueOf(numberOfPartitions));
         runner.run();
 
@@ -160,6 +159,70 @@ public class TestGenerateOracleTableFetch {
                                                           }
                                                           return new ArrayList<String>().stream();
                                                       }
+        ).collect(Collectors.toList());
+        assertThat(names).containsExactly("Joe Smith", "John Doe", "Joey Johnson", "Jasper Smith", "Jason Statham");
+
+    }
+
+
+    @Test
+    @Ignore
+    public void testGenerateIncrementalTableLoad() throws ClassNotFoundException, SQLException, InitializationException, IOException {
+        // load test data to database
+        final Connection con = ((DBCPService) runner.getControllerService("dbcp")).getConnection();
+        Statement stmt = con.createStatement();
+
+        dropTestTable(con);
+        stmt.execute("CREATE TABLE TEST_QUERY_DB_TABLE (id INTEGER NOT NULL, name VARCHAR(100))");
+        stmt.execute("INSERT INTO TEST_QUERY_DB_TABLE (id, name) VALUES (1, 'Joe Smith')");
+        stmt.execute("INSERT INTO TEST_QUERY_DB_TABLE (id, name) VALUES (25, 'John Doe')");
+        stmt.execute("INSERT INTO TEST_QUERY_DB_TABLE (id, name) VALUES (50, 'Joey Johnson')");
+        stmt.execute("INSERT INTO TEST_QUERY_DB_TABLE (id, name) VALUES (75, 'Jasper Smith')");
+        stmt.execute("INSERT INTO TEST_QUERY_DB_TABLE (id, name) VALUES (100, 'Jason Statham')");
+
+        int numberOfPartitions = 2;
+
+        runner.setProperty(GenerateOracleTableFetch.TABLE_NAME, "TEST_QUERY_DB_TABLE");
+        runner.setIncomingConnection(false);
+        runner.setProperty(GenerateOracleTableFetch.SPLIT_COLUMN, "ID");
+        runner.setProperty(GenerateOracleTableFetch.TENANT, "TENANT");
+        runner.setProperty(GenerateOracleTableFetch.SCHEMA, "APP");
+        runner.setProperty(GenerateOracleTableFetch.SOURCE, "SOURCE");
+        runner.setProperty(GenerateOracleTableFetch.NUMBER_OF_PARTITIONS, String.valueOf(numberOfPartitions));
+        runner.setProperty(GenerateOracleTableFetch.MAX_VALUE_COLUMN, "ID");
+        runner.setProperty(GenerateOracleTableFetch.MAX_VALUE_COLUMN_TYPE, GenerateOracleTableFetch.MAX_VALUE_COLUMN_TYPE_INT);
+        runner.setProperty(GenerateOracleTableFetch.MAX_VALUE_COLUMN_START_VALUE, String.valueOf(49));
+        runner.run();
+
+        runner.assertAllFlowFilesTransferred(REL_SUCCESS, numberOfPartitions);
+
+        runner.assertAllFlowFilesContainAttribute("table.name");
+        runner.assertAllFlowFilesContainAttribute("tenant.name");
+        runner.assertAllFlowFilesContainAttribute("schema.name");
+        runner.assertAllFlowFilesContainAttribute("source.name");
+
+        List<String> queries = Lists.newArrayList();
+        for (MockFlowFile flowFile : runner.getFlowFilesForRelationship(REL_SUCCESS)) {
+            queries.add(new String(flowFile.toByteArray()));
+        }
+
+        assertThat(queries).contains(
+                "SELECT * FROM APP.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 50 AND 74",
+                "SELECT * FROM APP.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 75 AND 100");
+
+
+        List<String> names = queries.stream().flatMap(query -> {
+                    try {
+                        List<String> results = Lists.newArrayList();
+                        ResultSet resultSet = stmt.executeQuery(query.replace("ID.", ""));
+                        while (resultSet.next()) {
+                            results.add(resultSet.getString("name"));
+                        }
+                        return results.stream();
+                    } catch (SQLException ignore) {
+                    }
+                    return new ArrayList<String>().stream();
+                }
         ).collect(Collectors.toList());
         assertThat(names).containsExactly("Joe Smith", "John Doe", "Joey Johnson", "Jasper Smith", "Jason Statham");
 

@@ -312,6 +312,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         return ImmutableList.of(DBCP_SERVICE,
                 TABLE_NAME,
                 COLUMN_NAMES,
+                MAX_VALUE_COLUMN,
+                MAX_VALUE_COLUMN_TYPE,
+                MAX_VALUE_COLUMN_TYPE_OPTION,
+                MAX_VALUE_COLUMN_START_VALUE,
                 QUERY_TIMEOUT,
                 NUMBER_OF_PARTITIONS,
                 SPLIT_COLUMN,
@@ -361,7 +365,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                         + "to use consistent max-value column names for a given table for incremental fetch to work properly.")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-                .expressionLanguageSupported(true)
                 .build();
 
         MAX_VALUE_COLUMN_TYPE = new PropertyDescriptor.Builder()
@@ -378,7 +381,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .description("Some types, like Date adnd Timstamp required additional options to work as expected")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-                .expressionLanguageSupported(true)
                 .build();
 
         MAX_VALUE_COLUMN_START_VALUE = new PropertyDescriptor.Builder()
@@ -386,7 +388,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .description("The initial value for Maximum-value Column to start from.")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-                .expressionLanguageSupported(true)
                 .build();
 
         QUERY_TIMEOUT = new org.apache.nifi.components.PropertyDescriptor.Builder()
