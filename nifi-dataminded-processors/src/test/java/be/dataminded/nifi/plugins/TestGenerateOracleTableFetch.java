@@ -102,7 +102,7 @@ public class TestGenerateOracleTableFetch {
 
 
     @Test
-    @Ignore
+    @Ignore("derby database does not have oracle mode. Suggestion: look at H2")
     public void testGenerateFullTableLoad() throws ClassNotFoundException, SQLException, InitializationException, IOException {
         // load test data to database
         final Connection con = ((DBCPService) runner.getControllerService("dbcp")).getConnection();
