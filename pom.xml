@@ -25,6 +25,7 @@
 
     <properties>
         <nifi.version>1.1.1</nifi.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <modules>
