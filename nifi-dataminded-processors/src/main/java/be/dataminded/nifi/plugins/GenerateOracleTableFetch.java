@@ -133,8 +133,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
             List<String> whereClauses = new ArrayList<>();
             List<String> selectClauses = new ArrayList<>();
-            selectClauses.add(String.format("COUNT(%s) AS %s", splitColumnName, COUNT_SPLIT_COLUMN_NAME));
 
+            selectClauses.add(String.format("COUNT(%s) AS %s", splitColumnName, COUNT_SPLIT_COLUMN_NAME));
             if (optionalToNumber) {
                 selectClauses.add(String.format("MIN(TO_NUMBER(%s)) AS %s", splitColumnName, MIN_SPLIT_COLUMN_NAME));
                 selectClauses.add(String.format("MAX(TO_NUMBER(%s)) AS %s", splitColumnName, MAX_SPLIT_COLUMN_NAME));
@@ -162,7 +162,12 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             }
 
             String selectQuery = String.format("SELECT %s FROM %s.%s WHERE %s", String.join(", ", selectClauses),
-                    schema, tableName, String.join(" AND ", whereClauses));
+                    schema, tableName, String.join(" AND ", whereClauses));;
+            if (whereClauses.isEmpty()) {
+                 selectQuery = String.format("SELECT %s FROM %s.%s", String.join(", ", selectClauses),
+                        schema, tableName);
+            }
+
             long low, high, numberOfRecords;
             String newMaxValue;
 

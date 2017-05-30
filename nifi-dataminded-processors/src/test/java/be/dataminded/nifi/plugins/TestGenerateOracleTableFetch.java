@@ -123,7 +123,7 @@ public class TestGenerateOracleTableFetch {
         runner.setIncomingConnection(false);
         runner.setProperty(GenerateOracleTableFetch.SPLIT_COLUMN, "ID");
         runner.setProperty(GenerateOracleTableFetch.TENANT, "TENANT");
-        runner.setProperty(GenerateOracleTableFetch.SCHEMA, "ID");
+        runner.setProperty(GenerateOracleTableFetch.SCHEMA, "APP");
         runner.setProperty(GenerateOracleTableFetch.SOURCE, "SOURCE");
         runner.setProperty(GenerateOracleTableFetch.SPLIT_COLUMN, "ID");
         runner.setProperty(GenerateOracleTableFetch.NUMBER_OF_PARTITIONS, String.valueOf(numberOfPartitions));
@@ -142,10 +142,10 @@ public class TestGenerateOracleTableFetch {
         }
 
         assertThat(queries).contains(
-                "SELECT * FROM ID.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 1 AND 24",
-                "SELECT * FROM ID.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 25 AND 48",
-                "SELECT * FROM ID.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 49 AND 72",
-                "SELECT * FROM ID.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 73 AND 100");
+                "SELECT * FROM APP.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 1 AND 24",
+                "SELECT * FROM APP.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 25 AND 48",
+                "SELECT * FROM APP.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 49 AND 72",
+                "SELECT * FROM APP.TEST_QUERY_DB_TABLE WHERE ID BETWEEN 73 AND 100");
 
 
         List<String> names = queries.stream().flatMap(query -> {
