@@ -23,7 +23,6 @@ import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
-import org.apache.nifi.dbcp.DBCPService;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.AbstractProcessor;
@@ -34,23 +33,18 @@ import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import be.dataminded.nifi.plugins.util.ArgumentUtils;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 
 @Tags({"database", "sql", "table", "dataminded"})
 @CapabilityDescription("Generate queries to extract all data from database tables")
 @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
 @WritesAttributes({
-        @WritesAttribute(attribute = "tenant.name", description = "Hint for which tenant this data is ingested"),
-        @WritesAttribute(attribute = "source.name", description = "Hint for which source this data is ingested"),
         @WritesAttribute(attribute = "schema.name", description = "Hint for which schema this data is ingested"),
-        @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
+        @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated"),
+        @WritesAttribute(attribute = "timewindow.begin", description = "The chronologically first timestamp of the time window that covers the content of the flow file's `split column`."),
+        @WritesAttribute(attribute = "timewindow.end", description = "The chronologically last timestamp of the time window that covers the content of the flow file's `split column`.")
 })
 public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
 
@@ -64,9 +58,6 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
     static final PropertyDescriptor TIME_FMT;
     static final PropertyDescriptor MIN_BOUND;
     static final PropertyDescriptor MAX_BOUND;
-
-    static final PropertyDescriptor TENANT;
-    static final PropertyDescriptor SOURCE;
     static final PropertyDescriptor SCHEMA;
 
     @Override
@@ -115,19 +106,8 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                 FlowFile sqlFlowFile = session.create();
                 sqlFlowFile = session.write(sqlFlowFile, out -> out.write(querf.getBytes()));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
-
-                String tenant = context.getProperty(TENANT).getValue();
-                String source = context.getProperty(SOURCE).getValue();
-
-                if (tenant != null) {
-                    sqlFlowFile = session.putAttribute(sqlFlowFile, "tenant.name", sanitizeAttribute(tenant));
-                }
-
-                if (source != null) {
-                    sqlFlowFile = session.putAttribute(sqlFlowFile, "source.name", sanitizeAttribute(source));
-
-                }
-
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "timewindow.begin", min.toString()); // ISO8601
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "timewindow.end", max.toString());
                 if (schema != null) {
                     sqlFlowFile = session.putAttribute(sqlFlowFile, "schema.name", sanitizeAttribute(schema));
                 }
@@ -168,8 +148,6 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                                 TIME_FMT,
                                 MIN_BOUND,
                                 MAX_BOUND,
-                                TENANT,
-                                SOURCE,
                                 SCHEMA,
                                 WHERE_CLAUSE);
     }
@@ -210,25 +188,6 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                 .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
                 .build();
 
-        TENANT = new org.apache.nifi.components.PropertyDescriptor.Builder()
-                .name("tenant")
-                .displayName("Tenant")
-                .required(false)
-                .defaultValue(null)
-                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-                .description("Hint for which tenant this data is ingested")
-                .build();
-
-        SOURCE = new org.apache.nifi.components.PropertyDescriptor.Builder()
-                .name("source")
-                .displayName("Source")
-                .required(false)
-                .defaultValue(null)
-                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-                .description("Hint for which source this data is ingested")
-                .build();
-
-
         SCHEMA = new org.apache.nifi.components.PropertyDescriptor.Builder()
                 .name("schema")
                 .displayName("Schema")
@@ -266,6 +225,6 @@ public class GenerateOracleTableTimeLimitedFetch extends AbstractProcessor {
                 .description("Optional conditional statements to be added to the query")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-                .build(); // TODO: look into adding ISO8061_INSTANT_VALIDATOR
+                .build();
     }
 }
