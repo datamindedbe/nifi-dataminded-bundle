@@ -34,6 +34,7 @@ import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.zeroturnaround.exec.ProcessExecutor;
 
+import java.io.ByteArrayOutputStream;
 import java.util.*;
 import java.util.concurrent.TimeoutException;
 
@@ -101,10 +102,13 @@ public class SimpleTriggeredProcessExecutor extends AbstractProcessor {
             return;
         }
 
+        StringBuffer exitcode = new StringBuffer();
+        ByteArrayOutputStream errors = new ByteArrayOutputStream();
+
         final List<String> commandStrings = createCommandStrings(context, flowFile.getAttributes());
         flowFile = session.write(flowFile, out -> {
             try {
-                new ProcessExecutor(commandStrings).redirectOutput(out).redirectError(out).destroyOnExit().execute();
+                exitcode.append(new ProcessExecutor(commandStrings).redirectOutput(out).redirectError(errors).destroyOnExit().execute().getExitValue());
             } catch (InterruptedException e) {
                 logger.warn("The external process was interrupted", e);
             } catch (TimeoutException e) {
@@ -112,7 +116,12 @@ public class SimpleTriggeredProcessExecutor extends AbstractProcessor {
             }
         });
 
-        session.transfer(flowFile, SUCCESS);
+        if(exitcode.toString().equals("0")) {
+            session.transfer(flowFile, SUCCESS);
+        } else {
+            logger.error("something went wrong with the job, this is the content of the error stream: "+errors.toString());
+            session.transfer(flowFile, FAILURE);
+        }
     }
 
     private List<String> createCommandStrings(final ProcessContext context, final Map<String, String> attributes) {

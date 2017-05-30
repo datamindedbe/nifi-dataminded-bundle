@@ -47,6 +47,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 
@@ -57,12 +58,16 @@ import java.util.concurrent.TimeUnit;
         + "to fetch only those records that have max values greater than the retained values. This can be used for "
         + "incremental fetching, fetching of newly added rows, etc. To clear the maximum values, clear the state of the processor "
         + "per the State Management documentation")
-@WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
 @WritesAttributes({
         @WritesAttribute(attribute = "tenant.name", description = "Hint for which tenant this data is ingested"),
         @WritesAttribute(attribute = "source.name", description = "Hint for which source this data is ingested"),
         @WritesAttribute(attribute = "schema.name", description = "Hint for which schema this data is ingested"),
-        @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated")
+        @WritesAttribute(attribute = "table.name", description = "The table name for which the queries are generated"),
+        @WritesAttribute(attribute = "generateoracletablefetch.total.row.count", description = "the count of the complete table"),
+        @WritesAttribute(attribute = "fragment.identifier", description = "All split FlowFiles produced from this query will have the same randomly generated UUID added for this attribute"),
+        @WritesAttribute(attribute = "fragment.index", description = "A one-up number that indicates the ordering of the split FlowFiles that were created from a single parent FlowFile"),
+        @WritesAttribute(attribute = "fragment.count", description = "The number of split FlowFiles generated from the parent FlowFile"),
+        @WritesAttribute(attribute = "segment.original.filename ", description = "The filename for all flowFiles (defragment expects this)")
 })
 public class GenerateOracleTableFetch extends AbstractProcessor {
 
@@ -72,6 +77,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor TABLE_NAME;
     static final PropertyDescriptor COLUMN_NAMES;
     static final PropertyDescriptor MAX_VALUE_COLUMN_NAME;
+    static final PropertyDescriptor MAX_VALUE_COLUMN_START_VALUE;
     static final PropertyDescriptor QUERY_TIMEOUT;
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
     static final PropertyDescriptor SPLIT_COLUMN;
@@ -80,6 +86,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor SOURCE;
     static final PropertyDescriptor SCHEMA;
 
+    static final PropertyDescriptor OPTION_TO_NUMBER;
 
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
@@ -90,9 +97,11 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final String schema = context.getProperty(SCHEMA).getValue();
         final String columnNames = context.getProperty(COLUMN_NAMES).getValue();
         final String maxValueColumnName = context.getProperty(MAX_VALUE_COLUMN_NAME).getValue();
+        final String maxValueColumnStartValue = context.getProperty(MAX_VALUE_COLUMN_START_VALUE).getValue();
         final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
         final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
+        final boolean optionalToNumber = context.getProperty(OPTION_TO_NUMBER).asBoolean();
 
         final StateManager stateManager = context.getStateManager();
         final StateMap stateMap;
@@ -107,13 +116,20 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         }
 
         try {
-            String selectQuery = String.format("SELECT MIN(%s), MAX(%s), COUNT(*) FROM %s.%s",
-                                               splitColumnName,
-                                               splitColumnName,
-                                               schema,
-                                               tableName);
 
-            if(!StringUtils.isEmpty(maxValueColumnName)) {
+            String queryStatement = "SELECT MIN(%s), MAX(%s), COUNT(%s) FROM %s.%s";
+            if (optionalToNumber) {
+                queryStatement = "SELECT MIN(TO_NUMBER(%s)), MAX(TO_NUMBER(%s)), COUNT(%s) FROM %s.%s";
+            }
+
+            String selectQuery = String.format(queryStatement,
+                    splitColumnName,
+                    splitColumnName,
+                    splitColumnName,
+                    schema,
+                    tableName);
+
+            if (!StringUtils.isEmpty(maxValueColumnName)) {
                 // Make a mutable copy of the current state property map. This will be updated by the result row callback, and eventually
                 // set as the current state map (after the session has been committed)
                 final Map<String, String> statePropertyMap = new HashMap<>(stateMap.toMap());
@@ -121,7 +137,11 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 final String fullyQualifiedStateKey = getStateKey(tableName, maxValueColumnName);
                 String maxValue = statePropertyMap.get(fullyQualifiedStateKey);
 
-                selectQuery = String.format("%s WHERE %s > %s", selectQuery, maxValueColumnName, value)
+                if(StringUtils.isBlank(maxValue)) {
+                    maxValue = maxValueColumnStartValue;
+                }
+
+                selectQuery = String.format("%s WHERE %s >= %s", selectQuery, maxValueColumnName, maxValue);
             }
 
             long low, high, numberOfRecords;
@@ -150,19 +170,27 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
             long chunks = Math.min(numberOfFetches, numberOfRecords);
             long chunkSize = (high - low) / Math.max(chunks, 1);
+            final String fragmentIdentifier = UUID.randomUUID().toString();
             for (int i = 0; i < chunks; i++) {
                 long min = (low + i * chunkSize);
                 long max = (i == chunks - 1) ? high : Math.min((i + 1) * chunkSize - 1 + low, high);
                 String query = String.format("SELECT %s FROM %s.%s WHERE %s BETWEEN %s AND %s",
-                                             columnNames,
-                                             schema,
-                                             tableName,
-                                             splitColumnName,
-                                             min,
-                                             max);
+                        columnNames,
+                        schema,
+                        tableName,
+                        splitColumnName,
+                        min,
+                        max);
                 FlowFile sqlFlowFile = session.create();
                 sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
+
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "generateoracletablefetch.total.row.count", String.valueOf(numberOfRecords));
+
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.identifier", fragmentIdentifier);
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.index", Integer.toString(i));
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "segment.original.filename", fragmentIdentifier);
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.count", Long.toString(chunks));
 
                 String tenant = context.getProperty(TENANT).getValue();
                 String source = context.getProperty(SOURCE).getValue();
@@ -223,14 +251,15 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
         return ImmutableList.of(DBCP_SERVICE,
-                                TABLE_NAME,
-                                COLUMN_NAMES,
-                                QUERY_TIMEOUT,
-                                NUMBER_OF_PARTITIONS,
-                                SPLIT_COLUMN,
-                                TENANT,
-                                SOURCE,
-                                SCHEMA);
+                TABLE_NAME,
+                COLUMN_NAMES,
+                QUERY_TIMEOUT,
+                NUMBER_OF_PARTITIONS,
+                SPLIT_COLUMN,
+                TENANT,
+                SOURCE,
+                SCHEMA,
+                OPTION_TO_NUMBER);
     }
 
     static {
@@ -264,13 +293,21 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .build();
 
         MAX_VALUE_COLUMN_NAME = new PropertyDescriptor.Builder()
-                .name("Maximum-value Columns")
+                .name("Maximum-value Column Name")
                 .description("A column name. The processor will keep track of the maximum value "
                         + "for the column that has been returned since the processor started running. This processor "
                         + "can be used to retrieve only those rows that have been added/updated since the last retrieval. Note that some "
                         + "JDBC types such as bit/boolean are not conducive to maintaining maximum value, so columns of these "
                         + "types should not be listed in this property, and will result in error(s) during processing. NOTE: It is important "
                         + "to use consistent max-value column names for a given table for incremental fetch to work properly.")
+                .required(false)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .expressionLanguageSupported(true)
+                .build();
+
+        MAX_VALUE_COLUMN_START_VALUE = new PropertyDescriptor.Builder()
+                .name("Maximum-value Column start value")
+                .description("The initial value for Maximum-value Column to start from.")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .expressionLanguageSupported(true)
@@ -325,6 +362,16 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .required(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .description("Hint for which schema this data is ingested")
+                .build();
+
+        OPTION_TO_NUMBER = new PropertyDescriptor.Builder()
+                .name("optionalToNumber")
+                .displayName("Optional to number")
+                .defaultValue("false")
+                .required(false)
+                .allowableValues("true", "false")
+                .addValidator(StandardValidators.BOOLEAN_VALIDATOR)
+                .description("option if the split column has to be cast to a number")
                 .build();
     }
 }
