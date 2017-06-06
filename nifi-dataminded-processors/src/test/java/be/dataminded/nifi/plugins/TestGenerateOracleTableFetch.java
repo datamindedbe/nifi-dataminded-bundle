@@ -148,17 +148,17 @@ public class TestGenerateOracleTableFetch {
 
 
         List<String> names = queries.stream().flatMap(query -> {
-                                                          try {
-                                                              List<String> results = Lists.newArrayList();
-                                                              ResultSet resultSet = stmt.executeQuery(query.replace("ID.", ""));
-                                                              while (resultSet.next()) {
-                                                                  results.add(resultSet.getString("name"));
-                                                              }
-                                                              return results.stream();
-                                                          } catch (SQLException ignore) {
-                                                          }
-                                                          return new ArrayList<String>().stream();
-                                                      }
+                    try {
+                        List<String> results = Lists.newArrayList();
+                        ResultSet resultSet = stmt.executeQuery(query.replace("ID.", ""));
+                        while (resultSet.next()) {
+                            results.add(resultSet.getString("name"));
+                        }
+                        return results.stream();
+                    } catch (SQLException ignore) {
+                    }
+                    return new ArrayList<String>().stream();
+                }
         ).collect(Collectors.toList());
         assertThat(names).containsExactly("Joe Smith", "John Doe", "Joey Johnson", "Jasper Smith", "Jason Statham");
 
@@ -227,8 +227,6 @@ public class TestGenerateOracleTableFetch {
         assertThat(names).containsExactly("Joe Smith", "John Doe", "Joey Johnson", "Jasper Smith", "Jason Statham");
 
     }
-
-
 
 
     /**

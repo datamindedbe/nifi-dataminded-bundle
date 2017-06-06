@@ -95,6 +95,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor SCHEMA;
 
     static final PropertyDescriptor OPTION_TO_NUMBER;
+    static final PropertyDescriptor CONDITION;
 
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
@@ -112,6 +113,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
         final boolean optionalToNumber = context.getProperty(OPTION_TO_NUMBER).asBoolean();
+        final String condition = context.getProperty(CONDITION).getValue();
 
         final StateManager stateManager = context.getStateManager();
         final StateMap stateMap;
@@ -131,26 +133,27 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             // set as the current state map (after the session has been committed)
             final Map<String, String> statePropertyMap = new HashMap<>(stateMap.toMap());
 
-            List<String> whereClauses = new ArrayList<>();
-            List<String> selectClauses = new ArrayList<>();
+            List<String> metaWhereClauses = new ArrayList<>();
+            List<String> metaSelectClauses = new ArrayList<>();
 
-            selectClauses.add(String.format("COUNT(%s) AS %s", splitColumnName, COUNT_SPLIT_COLUMN_NAME));
+            metaSelectClauses.add(String.format("COUNT(%s) AS %s", splitColumnName, COUNT_SPLIT_COLUMN_NAME));
             if (optionalToNumber) {
-                selectClauses.add(String.format("MIN(TO_NUMBER(%s)) AS %s", splitColumnName, MIN_SPLIT_COLUMN_NAME));
-                selectClauses.add(String.format("MAX(TO_NUMBER(%s)) AS %s", splitColumnName, MAX_SPLIT_COLUMN_NAME));
+                metaSelectClauses.add(String.format("MIN(TO_NUMBER(%s)) AS %s", splitColumnName, MIN_SPLIT_COLUMN_NAME));
+                metaSelectClauses.add(String.format("MAX(TO_NUMBER(%s)) AS %s", splitColumnName, MAX_SPLIT_COLUMN_NAME));
             } else {
-                selectClauses.add(String.format("MIN(%s) AS %s", splitColumnName, MIN_SPLIT_COLUMN_NAME));
-                selectClauses.add(String.format("MAX(%s) AS %s", splitColumnName, MAX_SPLIT_COLUMN_NAME));
+                metaSelectClauses.add(String.format("MIN(%s) AS %s", splitColumnName, MIN_SPLIT_COLUMN_NAME));
+                metaSelectClauses.add(String.format("MAX(%s) AS %s", splitColumnName, MAX_SPLIT_COLUMN_NAME));
             }
 
+            // Incremental load
             if (!StringUtils.isEmpty(maxValueColumnName)) {
 
                 // Add the max value of the max value column and convert to a string
                 if(StringUtils.isEmpty(maxValueColumnTypeOption)) {
-                    selectClauses.add(String.format("TO_CHAR(MAX(%s)) AS %s", splitColumnName,
+                    metaSelectClauses.add(String.format("TO_CHAR(MAX(%s)) AS %s", splitColumnName,
                             MAX_MAX_VALUE_COLUMN_NAME));
                 } else {
-                    selectClauses.add(String.format("TO_CHAR(MAX(%s), %s) AS %s", splitColumnName,
+                    metaSelectClauses.add(String.format("TO_CHAR(MAX(%s), %s) AS %s", splitColumnName,
                             maxValueColumnTypeOption, MAX_MAX_VALUE_COLUMN_NAME));
                 }
                 String maxValue = statePropertyMap.get(fullyQualifiedStateKey);
@@ -158,20 +161,25 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 if(StringUtils.isBlank(maxValue)) {
                     maxValue = maxValueColumnStartValue;
                 }
-                whereClauses.add(getMaxValueWhereClause(maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption, maxValue));
+                metaWhereClauses.add(getMaxValueWhereClause(maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption, maxValue));
             }
 
-            String selectQuery = String.format("SELECT %s FROM %s.%s WHERE %s", String.join(", ", selectClauses),
-                    schema, tableName, String.join(" AND ", whereClauses));;
-            if (whereClauses.isEmpty()) {
-                 selectQuery = String.format("SELECT %s FROM %s.%s", String.join(", ", selectClauses),
+            // Additional condition
+            if (!StringUtils.isEmpty(condition)) {
+                metaWhereClauses.add(condition);
+            }
+
+            String selectQuery = String.format("SELECT %s FROM %s.%s WHERE %s", String.join(", ", metaSelectClauses),
+                    schema, tableName, String.join(" AND ", metaWhereClauses));
+            if (metaWhereClauses.isEmpty()) {
+                 selectQuery = String.format("SELECT %s FROM %s.%s", String.join(", ", metaSelectClauses),
                         schema, tableName);
             }
 
             long low, high, numberOfRecords;
             String newMaxValue;
 
-            // Fetch metadata from the database //
+            // Fetch metadata from the database
             try (final Connection con = dbcpService.getConnection();
                  final Statement statement = con.createStatement()) {
                 statement.setQueryTimeout(queryTimeout);
@@ -197,19 +205,23 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 throw new ProcessException(e);
             }
 
+            // Generate queries
             long chunks = Math.min(numberOfFetches, numberOfRecords);
             long chunkSize = (high - low) / Math.max(chunks, 1);
             final String fragmentIdentifier = UUID.randomUUID().toString();
             for (int i = 0; i < chunks; i++) {
                 long min = (low + i * chunkSize);
                 long max = (i == chunks - 1) ? high : Math.min((i + 1) * chunkSize - 1 + low, high);
-                String query = String.format("SELECT %s FROM %s.%s WHERE %s BETWEEN %s AND %s",
+                List<String> queryWhereClauses = new ArrayList<>();
+                queryWhereClauses.add(String.format("%s BETWEEN %s AND %s", splitColumnName, min, max));
+                if (!StringUtils.isEmpty(condition)) {
+                    queryWhereClauses.add(condition);
+                }
+                String query = String.format("SELECT %s FROM %s.%s WHERE %s",
                         columnNames,
                         schema,
                         tableName,
-                        splitColumnName,
-                        min,
-                        max);
+                        String.join(" AND ", queryWhereClauses));
                 FlowFile sqlFlowFile = session.create();
                 sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
@@ -449,6 +461,15 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .allowableValues("true", "false")
                 .addValidator(StandardValidators.BOOLEAN_VALIDATOR)
                 .description("option if the split column has to be cast to a number")
+                .build();
+
+        CONDITION = new PropertyDescriptor.Builder()
+                .name("condition")
+                .displayName("Condition")
+                .defaultValue(null)
+                .required(false)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .description("Additional WHERE clause for the query")
                 .build();
     }
 }
