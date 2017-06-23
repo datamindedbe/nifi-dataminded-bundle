@@ -135,6 +135,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
             List<String> metaWhereClauses = new ArrayList<>();
             List<String> metaSelectClauses = new ArrayList<>();
+            String maxValueWhereClause = null;
 
             metaSelectClauses.add(String.format("COUNT(%s) AS %s", splitColumnName, COUNT_SPLIT_COLUMN_NAME));
             if (optionalToNumber) {
@@ -150,10 +151,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
                 // Add the max value of the max value column and convert to a string
                 if(StringUtils.isEmpty(maxValueColumnTypeOption)) {
-                    metaSelectClauses.add(String.format("TO_CHAR(MAX(%s)) AS %s", splitColumnName,
+                    metaSelectClauses.add(String.format("TO_CHAR(MAX(%s)) AS %s", maxValueColumnName,
                             MAX_MAX_VALUE_COLUMN_NAME));
                 } else {
-                    metaSelectClauses.add(String.format("TO_CHAR(MAX(%s), %s) AS %s", splitColumnName,
+                    metaSelectClauses.add(String.format("TO_CHAR(MAX(%s), '%s') AS %s", maxValueColumnName,
                             maxValueColumnTypeOption, MAX_MAX_VALUE_COLUMN_NAME));
                 }
                 String maxValue = statePropertyMap.get(fullyQualifiedStateKey);
@@ -161,7 +162,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 if(StringUtils.isBlank(maxValue)) {
                     maxValue = maxValueColumnStartValue;
                 }
-                metaWhereClauses.add(getMaxValueWhereClause(maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption, maxValue));
+                maxValueWhereClause = getMaxValueWhereClause(maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption, maxValue);
+                metaWhereClauses.add(maxValueWhereClause);
             }
 
             // Additional condition
@@ -214,6 +216,9 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 long max = (i == chunks - 1) ? high : Math.min((i + 1) * chunkSize - 1 + low, high);
                 List<String> queryWhereClauses = new ArrayList<>();
                 queryWhereClauses.add(String.format("%s BETWEEN %s AND %s", splitColumnName, min, max));
+                if (!StringUtils.isEmpty(maxValueWhereClause)) {
+                    queryWhereClauses.add(maxValueWhereClause);
+                }
                 if (!StringUtils.isEmpty(condition)) {
                     queryWhereClauses.add(condition);
                 }
@@ -334,7 +339,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 TENANT,
                 SOURCE,
                 SCHEMA,
-                OPTION_TO_NUMBER);
+                OPTION_TO_NUMBER,
+                CONDITION);
     }
 
     static {
