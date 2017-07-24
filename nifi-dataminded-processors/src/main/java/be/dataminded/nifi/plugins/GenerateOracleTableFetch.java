@@ -70,7 +70,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     public static final String MAX_VALUE_COLUMN_TYPE_NONE = "None";
     public static final String MAX_VALUE_COLUMN_TYPE_INT = "Integer";
     public static final String MAX_VALUE_COLUMN_TYPE_DATE = "Date";
-    public static final String MAX_VALUE_COLUMN_TYPE_TIMSTAMP = "Timestamp";
+    public static final String MAX_VALUE_COLUMN_TYPE_TIMESTAMP = "Timestamp";
 
     public static final String COUNT_SPLIT_COLUMN_NAME = "CountSplit";
     public static final String MIN_SPLIT_COLUMN_NAME = "MinSplit";
@@ -276,7 +276,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     }
 
     private static String getMaxValueWhereClause(String maxValueColumnName, String maxValueColumnType,
-                                                 String maxValueColumnTypeOption, String maxValue) {
+                                                 String maxValueColumnTypeOption, String maxValue)  {
         String condition = "";
         switch (maxValueColumnType) {
             case MAX_VALUE_COLUMN_TYPE_NONE:
@@ -286,7 +286,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 condition = String.format("%s > TO_DATE('%s', '%s')", maxValueColumnName, maxValue,
                         maxValueColumnTypeOption);
                 break;
-            case MAX_VALUE_COLUMN_TYPE_TIMSTAMP:
+            case MAX_VALUE_COLUMN_TYPE_TIMESTAMP:
                 condition = String.format("%s > TO_TIMESTAMP('%s', '%s')", maxValueColumnName, maxValue,
                         maxValueColumnTypeOption);
                 break;
@@ -390,13 +390,13 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .description("The type of the max value column so we can build the correct queries")
                 .required(false)
                 .allowableValues(MAX_VALUE_COLUMN_TYPE_NONE, MAX_VALUE_COLUMN_TYPE_INT, MAX_VALUE_COLUMN_TYPE_DATE,
-                        MAX_VALUE_COLUMN_TYPE_TIMSTAMP)
+                        MAX_VALUE_COLUMN_TYPE_TIMESTAMP)
                 .defaultValue(MAX_VALUE_COLUMN_TYPE_NONE)
                 .build();
 
         MAX_VALUE_COLUMN_TYPE_OPTION = new PropertyDescriptor.Builder()
                 .name("Maximum-value Column Type option")
-                .description("Some types, like Date adnd Timstamp required additional options to work as expected")
+                .description("Some types, like Date and Timstamp, require additional options to work as expected")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build();
