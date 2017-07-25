@@ -76,6 +76,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     public static final String MIN_SPLIT_COLUMN_NAME = "MinSplit";
     public static final String MAX_SPLIT_COLUMN_NAME = "MaxSplit";
     public static final String MAX_MAX_VALUE_COLUMN_NAME = "MaxMaxValue";
+    public static final String MAX_MAX_VALUE_COLUMN2_NAME = "MaxMaxValue2";
 
     static final Relationship REL_SUCCESS;
 
@@ -86,6 +87,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor MAX_VALUE_COLUMN_TYPE;
     static final PropertyDescriptor MAX_VALUE_COLUMN_TYPE_OPTION;
     static final PropertyDescriptor MAX_VALUE_COLUMN_START_VALUE;
+    static final PropertyDescriptor MAX_VALUE_COLUMN2;
+    static final PropertyDescriptor MAX_VALUE_COLUMN2_TYPE;
+    static final PropertyDescriptor MAX_VALUE_COLUMN2_TYPE_OPTION;
+    static final PropertyDescriptor MAX_VALUE_COLUMN2_START_VALUE;
     static final PropertyDescriptor QUERY_TIMEOUT;
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
     static final PropertyDescriptor SPLIT_COLUMN;
@@ -109,6 +114,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final String maxValueColumnType = context.getProperty(MAX_VALUE_COLUMN_TYPE).getValue();
         final String maxValueColumnTypeOption = context.getProperty(MAX_VALUE_COLUMN_TYPE_OPTION).getValue();
         final String maxValueColumnStartValue = context.getProperty(MAX_VALUE_COLUMN_START_VALUE).getValue();
+        final String maxValueColumn2Name = context.getProperty(MAX_VALUE_COLUMN2).getValue();
+        final String maxValueColumn2Type = context.getProperty(MAX_VALUE_COLUMN2_TYPE).getValue();
+        final String maxValueColumn2TypeOption = context.getProperty(MAX_VALUE_COLUMN2_TYPE_OPTION).getValue();
+        final String maxValueColumn2StartValue = context.getProperty(MAX_VALUE_COLUMN2_START_VALUE).getValue();
         final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
         final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
@@ -118,6 +127,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final StateManager stateManager = context.getStateManager();
         final StateMap stateMap;
         final String fullyQualifiedStateKey = getStateKey(tableName, maxValueColumnName);
+        final String fullyQualifiedStateKey2 = getStateKey(tableName, maxValueColumn2Name);
 
         try {
             stateMap = stateManager.getState(Scope.CLUSTER);
@@ -135,7 +145,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
             List<String> metaWhereClauses = new ArrayList<>();
             List<String> metaSelectClauses = new ArrayList<>();
-            String maxValueWhereClause = null;
 
             metaSelectClauses.add(String.format("COUNT(%s) AS %s", splitColumnName, COUNT_SPLIT_COLUMN_NAME));
             if (optionalToNumber) {
@@ -147,24 +156,12 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             }
 
             // Incremental load
-            if (!StringUtils.isEmpty(maxValueColumnName)) {
-
-                // Add the max value of the max value column and convert to a string
-                if(StringUtils.isEmpty(maxValueColumnTypeOption)) {
-                    metaSelectClauses.add(String.format("TO_CHAR(MAX(%s)) AS %s", maxValueColumnName,
-                            MAX_MAX_VALUE_COLUMN_NAME));
-                } else {
-                    metaSelectClauses.add(String.format("TO_CHAR(MAX(%s), '%s') AS %s", maxValueColumnName,
-                            maxValueColumnTypeOption, MAX_MAX_VALUE_COLUMN_NAME));
-                }
-                String maxValue = statePropertyMap.get(fullyQualifiedStateKey);
-
-                if(StringUtils.isBlank(maxValue)) {
-                    maxValue = maxValueColumnStartValue;
-                }
-                maxValueWhereClause = getMaxValueWhereClause(maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption, maxValue);
-                metaWhereClauses.add(maxValueWhereClause);
-            }
+            String maxValueWhereClause = updateClausesList(
+                    metaSelectClauses, metaWhereClauses, maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption,
+                    MAX_MAX_VALUE_COLUMN_NAME, maxValueColumnStartValue, statePropertyMap, fullyQualifiedStateKey);
+            String maxValueWhereClause2 = updateClausesList(
+                    metaSelectClauses, metaWhereClauses, maxValueColumn2Name, maxValueColumn2Type, maxValueColumn2TypeOption,
+                    MAX_MAX_VALUE_COLUMN2_NAME, maxValueColumn2StartValue, statePropertyMap, fullyQualifiedStateKey2);
 
             // Additional condition
             if (!StringUtils.isEmpty(condition)) {
@@ -196,6 +193,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                         newMaxValue = resultSet.getString(MAX_MAX_VALUE_COLUMN_NAME);
                         statePropertyMap.put(fullyQualifiedStateKey, newMaxValue);
                     }
+                    if(!StringUtils.isEmpty(maxValueColumn2Name)) {
+                        newMaxValue = resultSet.getString(MAX_MAX_VALUE_COLUMN2_NAME);
+                        statePropertyMap.put(fullyQualifiedStateKey2, newMaxValue);
+                    }
                 } else {
                     logger.error(
                             "Something is very wrong here, one row (even if count is zero) should have been returned: {}",
@@ -218,6 +219,9 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 queryWhereClauses.add(String.format("%s BETWEEN %s AND %s", splitColumnName, min, max));
                 if (!StringUtils.isEmpty(maxValueWhereClause)) {
                     queryWhereClauses.add(maxValueWhereClause);
+                }
+                if (!StringUtils.isEmpty(maxValueWhereClause2)) {
+                    queryWhereClauses.add(maxValueWhereClause2);
                 }
                 if (!StringUtils.isEmpty(condition)) {
                     queryWhereClauses.add(condition);
@@ -280,6 +284,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         String condition = "";
         switch (maxValueColumnType) {
             case MAX_VALUE_COLUMN_TYPE_NONE:
+            case MAX_VALUE_COLUMN_TYPE_INT:
                 condition = String.format("%s > %s", maxValueColumnName, maxValue);
                 break;
             case MAX_VALUE_COLUMN_TYPE_DATE:
@@ -289,9 +294,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             case MAX_VALUE_COLUMN_TYPE_TIMESTAMP:
                 condition = String.format("%s > TO_TIMESTAMP('%s', '%s')", maxValueColumnName, maxValue,
                         maxValueColumnTypeOption);
-                break;
-            case MAX_VALUE_COLUMN_TYPE_INT:
-                condition = String.format("%s > %s", maxValueColumnName, maxValue);
                 break;
         }
         return condition;
@@ -317,6 +319,32 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         return attribute.toLowerCase().replaceAll("_", "-");
     }
 
+    private String updateClausesList(List<String> metaSelectClauses, List<String> metaWhereClauses, String maxValueColumnName,
+                                     String maxValueColumnType,
+                                     String maxValueColumnTypeOption, String MAX_MAX_VALUE_COLUMN_NAME, String maxValueColumnStartValue,
+                                     Map<String, String> statePropertyMap, String fullyQualifiedStateKey) {
+        String maxValueWhereClause;
+        if (!StringUtils.isEmpty(maxValueColumnName)) {
+
+            // Add the max value of the max value column and convert to a string
+            if(StringUtils.isEmpty(maxValueColumnTypeOption)) {
+                metaSelectClauses.add(String.format("TO_CHAR(MAX(%s)) AS %s", maxValueColumnName,
+                        MAX_MAX_VALUE_COLUMN_NAME));
+            } else {
+                metaSelectClauses.add(String.format("TO_CHAR(MAX(%s), '%s') AS %s", maxValueColumnName,
+                        maxValueColumnTypeOption, MAX_MAX_VALUE_COLUMN_NAME));
+            }
+            String maxValue = statePropertyMap.get(fullyQualifiedStateKey);
+
+            if(StringUtils.isBlank(maxValue)) {
+                maxValue = maxValueColumnStartValue;
+            }
+            maxValueWhereClause = getMaxValueWhereClause(maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption, maxValue);
+            metaWhereClauses.add(maxValueWhereClause);
+            return maxValueWhereClause;
+        }
+        return null;
+    }
 
     @Override
     public Set<Relationship> getRelationships() {
@@ -333,6 +361,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 MAX_VALUE_COLUMN_TYPE,
                 MAX_VALUE_COLUMN_TYPE_OPTION,
                 MAX_VALUE_COLUMN_START_VALUE,
+                MAX_VALUE_COLUMN2,
+                MAX_VALUE_COLUMN2_TYPE,
+                MAX_VALUE_COLUMN2_TYPE_OPTION,
+                MAX_VALUE_COLUMN2_START_VALUE,
                 QUERY_TIMEOUT,
                 NUMBER_OF_PARTITIONS,
                 SPLIT_COLUMN,
@@ -403,6 +435,42 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
         MAX_VALUE_COLUMN_START_VALUE = new PropertyDescriptor.Builder()
                 .name("Maximum-value Column start value")
+                .description("The initial value for Maximum-value Column to start from.")
+                .required(false)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .build();
+
+        // TODO: ideally use dynamic properties
+        MAX_VALUE_COLUMN2 = new PropertyDescriptor.Builder()
+                .name("Maximum-value 2nd Column Name")
+                .description("A column name. The processor will keep track of the maximum value "
+                        + "for the column that has been returned since the processor started running. This processor "
+                        + "can be used to retrieve only those rows that have been added/updated since the last retrieval. Note that some "
+                        + "JDBC types such as bit/boolean are not conducive to maintaining maximum value, so columns of these "
+                        + "types should not be listed in this property, and will result in error(s) during processing. NOTE: It is important "
+                        + "to use consistent max-value column names for a given table for incremental fetch to work properly.")
+                .required(false)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .build();
+
+        MAX_VALUE_COLUMN2_TYPE = new PropertyDescriptor.Builder()
+                .name("Maximum-value 2nd Column Type")
+                .description("The type of the max value column so we can build the correct queries")
+                .required(false)
+                .allowableValues(MAX_VALUE_COLUMN_TYPE_NONE, MAX_VALUE_COLUMN_TYPE_INT, MAX_VALUE_COLUMN_TYPE_DATE,
+                        MAX_VALUE_COLUMN_TYPE_TIMESTAMP)
+                .defaultValue(MAX_VALUE_COLUMN_TYPE_NONE)
+                .build();
+
+        MAX_VALUE_COLUMN2_TYPE_OPTION = new PropertyDescriptor.Builder()
+                .name("Maximum-value 2nd Column Type option")
+                .description("Some types, like Date and Timstamp, require additional options to work as expected")
+                .required(false)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .build();
+
+        MAX_VALUE_COLUMN2_START_VALUE = new PropertyDescriptor.Builder()
+                .name("Maximum-value 2nd Column start value")
                 .description("The initial value for Maximum-value Column to start from.")
                 .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
