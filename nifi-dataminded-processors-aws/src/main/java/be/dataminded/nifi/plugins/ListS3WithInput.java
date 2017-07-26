@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import com.google.common.collect.Sets;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.InputRequirement.Requirement;
 import org.apache.nifi.annotation.behavior.Stateful;
@@ -54,6 +55,7 @@ import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.s3.model.S3VersionSummary;
 import com.amazonaws.services.s3.model.VersionListing;
 import org.apache.nifi.processors.aws.s3.AbstractS3Processor;
+import org.apache.nifi.util.StringUtils;
 
 @TriggerSerially
 @InputRequirement(Requirement.INPUT_REQUIRED)
@@ -77,6 +79,16 @@ import org.apache.nifi.processors.aws.s3.AbstractS3Processor;
         @WritesAttribute(attribute = "s3.version", description = "The version of the object, if applicable")})
 public class ListS3WithInput extends AbstractS3Processor {
 
+    public static final Relationship SUCCESS = new Relationship.Builder()
+            .name("success")
+            .description("Successfully created FlowFile.")
+            .build();
+
+    public static final Relationship ORIGINAL = new Relationship.Builder()
+            .name("original")
+            .description("Original FlowFile.")
+            .build();
+
     public static final PropertyDescriptor DELIMITER = new PropertyDescriptor.Builder()
             .name("delimiter")
             .displayName("Delimiter")
@@ -96,6 +108,15 @@ public class ListS3WithInput extends AbstractS3Processor {
             .description("The prefix used to filter the object list. In most cases, it should end with a forward slash ('/').")
             .build();
 
+    public static final PropertyDescriptor FILE_EXTENSION = new PropertyDescriptor.Builder()
+            .name("file-extension")
+            .displayName("File Extension")
+            .expressionLanguageSupported(true)
+            .required(false)
+            .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .description("The file extension to filter on.")
+            .build();
+
     public static final PropertyDescriptor USE_VERSIONS = new PropertyDescriptor.Builder()
             .name("use-versions")
             .displayName("Use Versions")
@@ -110,10 +131,10 @@ public class ListS3WithInput extends AbstractS3Processor {
     public static final List<PropertyDescriptor> properties = Collections.unmodifiableList(
             Arrays.asList(BUCKET, REGION, ACCESS_KEY, SECRET_KEY, CREDENTIALS_FILE,
                     AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE, ENDPOINT_OVERRIDE,
-                    SIGNER_OVERRIDE, PROXY_HOST, PROXY_HOST_PORT, DELIMITER, PREFIX, USE_VERSIONS));
+                    SIGNER_OVERRIDE, PROXY_HOST, PROXY_HOST_PORT, DELIMITER, PREFIX, FILE_EXTENSION, USE_VERSIONS));
 
     public static final Set<Relationship> relationships = Collections.unmodifiableSet(
-            new HashSet<>(Collections.singletonList(REL_SUCCESS)));
+            Sets.newHashSet(SUCCESS, ORIGINAL));
 
     public static final String CURRENT_TIMESTAMP = "currentTimestamp";
     public static final String CURRENT_KEY_PREFIX = "key-";
@@ -190,13 +211,14 @@ public class ListS3WithInput extends AbstractS3Processor {
         int listCount = 0;
         long maxTimestamp = 0L;
         String delimiter = context.getProperty(DELIMITER).getValue();
-        String prefix = context.getProperty(PREFIX).evaluateAttributeExpressions().getValue();
+        String prefix = context.getProperty(PREFIX).evaluateAttributeExpressions(flowFileIn).getValue();
+        String fileExtension = context.getProperty(FILE_EXTENSION).evaluateAttributeExpressions(flowFileIn).getValue();
 
         boolean useVersions = context.getProperty(USE_VERSIONS).asBoolean();
 
         S3BucketLister bucketLister = useVersions
                 ? new S3VersionBucketLister(client)
-                : new S3ObjectBucketLister(client);
+                : new S3ObjectBucketLister(client, fileExtension);
 
         bucketLister.setBucketName(bucket);
 
@@ -206,6 +228,9 @@ public class ListS3WithInput extends AbstractS3Processor {
         if (prefix != null && !prefix.isEmpty()) {
             bucketLister.setPrefix(prefix);
         }
+
+        // transfer the original one
+        session.transfer(flowFileIn, ORIGINAL);
 
         VersionListing versionListing;
         do {
@@ -236,7 +261,7 @@ public class ListS3WithInput extends AbstractS3Processor {
                 // Create the flowfile
                 FlowFile flowFile = session.create();
                 flowFile = session.putAllAttributes(flowFile, attributes);
-                session.transfer(flowFile, REL_SUCCESS);
+                session.transfer(flowFile, SUCCESS);
 
                 // Update state
                 if (lastModified > maxTimestamp) {
@@ -256,7 +281,7 @@ public class ListS3WithInput extends AbstractS3Processor {
         currentTimestamp = maxTimestamp;
 
         final long listMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
-        getLogger().info("Successfully listed S3 bucket {} in {} millis", new Object[]{bucket, listMillis});
+        getLogger().info("Successfully listed S3 bucket {} with prefix {} in {} millis", new Object[]{bucket, prefix, listMillis});
 
         if (!commit(context, session, listCount)) {
             if (currentTimestamp > 0) {
@@ -292,9 +317,11 @@ public class ListS3WithInput extends AbstractS3Processor {
         private AmazonS3 client;
         private ListObjectsRequest listObjectsRequest;
         private ObjectListing objectListing;
+        private String fileExtension;
 
-        public S3ObjectBucketLister(AmazonS3 client) {
+        public S3ObjectBucketLister(AmazonS3 client, String fileExtension) {
             this.client = client;
+            this.fileExtension = fileExtension;
         }
 
         @Override
@@ -327,9 +354,10 @@ public class ListS3WithInput extends AbstractS3Processor {
                 versionSummary.setStorageClass(objectSummary.getStorageClass());
                 versionSummary.setIsLatest(true);
 
-                versionListing.getVersionSummaries().add(versionSummary);
+                if(StringUtils.isEmpty(fileExtension) || versionSummary.getKey().endsWith(fileExtension)) {
+                    versionListing.getVersionSummaries().add(versionSummary);
+                }
             }
-
             return versionListing;
         }
 
