@@ -184,6 +184,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             } catch (IOException e) {
                 logger.error("Failed to retrieve observed maximum values from the state . Will not perform "
                         + "query until this is accomplished.", e);
+                context.yield();
+                return;
             }
 
             List<String> metaWhereClauses = new ArrayList<>();
@@ -234,11 +236,15 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                     numberOfRecords = resultSet.getLong(COUNT_SPLIT_COLUMN_NAME);
                     if(!StringUtils.isEmpty(maxValueColumnName)) {
                         newMaxValue = resultSet.getString(MAX_MAX_VALUE_COLUMN_NAME);
-                        state.setMaxValueColumnStartValue(newMaxValue);
+                        if(!StringUtils.isEmpty(newMaxValue)) {
+                            state.setMaxValueColumnStartValue(newMaxValue);
+                        }
                     }
                     if(!StringUtils.isEmpty(maxValueColumn2Name)) {
                         newMaxValue = resultSet.getString(MAX_MAX_VALUE_COLUMN2_NAME);
-                        state.setMaxValueColumn2StartValue(newMaxValue);
+                        if(!StringUtils.isEmpty(newMaxValue)) {
+                            state.setMaxValueColumn2StartValue(newMaxValue);
+                        }
                     }
                 } else {
                     logger.error(
