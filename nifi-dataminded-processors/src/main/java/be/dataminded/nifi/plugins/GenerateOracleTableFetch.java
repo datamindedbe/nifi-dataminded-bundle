@@ -38,7 +38,7 @@ import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.util.StringUtils;
 
-import java.io.IOException;
+import java.io.*;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -47,13 +47,15 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 
+
+
 @Tags({"database", "sql", "table", "dataminded"})
 @CapabilityDescription("Generate queries to extract all data from database tables")
-@Stateful(scopes = Scope.CLUSTER, description = "After performing a query on the specified table, the maximum values for "
-        + "the specified column(s) will be retained for use in future executions of the query. This allows the Processor "
-        + "to fetch only those records that have max values greater than the retained values. This can be used for "
-        + "incremental fetching, fetching of newly added rows, etc. To clear the maximum values, clear the state of the processor "
-        + "per the State Management documentation")
+//@Stateful(scopes = Scope.CLUSTER, description = "After performing a query on the specified table, the maximum values for "
+//        + "the specified column(s) will be retained for use in future executions of the query. This allows the Processor "
+//        + "to fetch only those records that have max values greater than the retained values. This can be used for "
+//        + "incremental fetching, fetching of newly added rows, etc. To clear the maximum values, clear the state of the processor "
+//        + "per the State Management documentation")
 @WritesAttributes({
         @WritesAttribute(attribute = "tenant.name", description = "Hint for which tenant this data is ingested"),
         @WritesAttribute(attribute = "source.name", description = "Hint for which source this data is ingested"),
@@ -63,9 +65,57 @@ import java.util.concurrent.TimeUnit;
         @WritesAttribute(attribute = "fragment.identifier", description = "All split FlowFiles produced from this query will have the same randomly generated UUID added for this attribute"),
         @WritesAttribute(attribute = "fragment.index", description = "A one-up number that indicates the ordering of the split FlowFiles that were created from a single parent FlowFile"),
         @WritesAttribute(attribute = "fragment.count", description = "The number of split FlowFiles generated from the parent FlowFile"),
-        @WritesAttribute(attribute = "segment.original.filename ", description = "The filename for all flowFiles (defragment expects this)")
+        @WritesAttribute(attribute = "fragment.sql", description = "The query for the segement"),
+        @WritesAttribute(attribute = "segment.original.filename", description = "The filename for all flowFiles (defragment expects this)")
 })
 public class GenerateOracleTableFetch extends AbstractProcessor {
+
+    //define an internal state
+    private class IncrementalState {
+        private String maxValueColumnStartValue;
+        private String maxValueColumn2StartValue;
+
+        public void loadFromPropertiesFile(String filePath,
+                                           String defaultMaxValueColumnStartValue,
+                                           String defaultMaxValueColumn2StartValue) throws IOException {
+
+            File f = new File(filePath);
+            // if the file does not exist, then we set it to the default value
+            if(f.exists() && !f.isDirectory()) {
+                Properties properties = new Properties();
+                properties.load(new FileInputStream(filePath));
+
+                this.maxValueColumnStartValue = properties.getProperty("maxValueColumnStartValue");
+                this.maxValueColumn2StartValue = properties.getProperty("maxValueColumn2StartValue");
+            } else {
+                this.maxValueColumnStartValue = defaultMaxValueColumnStartValue;
+                this.maxValueColumn2StartValue = defaultMaxValueColumn2StartValue;
+            }
+        }
+
+        public void writeToPropertiesFile(String filePath) throws IOException {
+            Properties properties = new Properties();
+            properties.setProperty("maxValueColumnStartValue", this.maxValueColumnStartValue);
+            properties.setProperty("maxValueColumn2StartValue", this.maxValueColumn2StartValue);
+            properties.store(new FileWriter(filePath), "Writing properties file");
+        }
+
+        public String getMaxValueColumnStartValue() {
+            return maxValueColumnStartValue;
+        }
+
+        public void setMaxValueColumnStartValue(String maxValueColumnStartValue) {
+            this.maxValueColumnStartValue = maxValueColumnStartValue;
+        }
+
+        public String getMaxValueColumn2StartValue() {
+            return maxValueColumn2StartValue;
+        }
+
+        public void setMaxValueColumn2StartValue(String maxValueColumn2StartValue) {
+            this.maxValueColumn2StartValue = maxValueColumn2StartValue;
+        }
+    }
 
     public static final String MAX_VALUE_COLUMN_TYPE_NONE = "None";
     public static final String MAX_VALUE_COLUMN_TYPE_INT = "Integer";
@@ -94,6 +144,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor QUERY_TIMEOUT;
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
     static final PropertyDescriptor SPLIT_COLUMN;
+    static final PropertyDescriptor STATE_FILE;
 
     static final PropertyDescriptor TENANT;
     static final PropertyDescriptor SOURCE;
@@ -119,29 +170,21 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final String maxValueColumn2TypeOption = context.getProperty(MAX_VALUE_COLUMN2_TYPE_OPTION).getValue();
         final String maxValueColumn2StartValue = context.getProperty(MAX_VALUE_COLUMN2_START_VALUE).getValue();
         final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
+        final String stateFile = context.getProperty(STATE_FILE).getValue();
         final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
         final boolean optionalToNumber = context.getProperty(OPTION_TO_NUMBER).asBoolean();
         final String condition = context.getProperty(CONDITION).getValue();
 
-        final StateManager stateManager = context.getStateManager();
-        final StateMap stateMap;
-        final String fullyQualifiedStateKey = getStateKey(tableName, maxValueColumnName);
-        final String fullyQualifiedStateKey2 = getStateKey(tableName, maxValueColumn2Name);
-
         try {
-            stateMap = stateManager.getState(Scope.CLUSTER);
-        } catch (final IOException ioe) {
-            logger.error("Failed to retrieve observed maximum values from the State Manager. Will not perform "
-                    + "query until this is accomplished.", ioe);
-            context.yield();
-            return;
-        }
-
-        try {
-            // Make a mutable copy of the current state property map. This will be updated by the result row callback, and eventually
-            // set as the current state map (after the session has been committed)
-            final Map<String, String> statePropertyMap = new HashMap<>(stateMap.toMap());
+            // Get the current version of the
+            IncrementalState state = new IncrementalState();
+            try {
+                state.loadFromPropertiesFile(stateFile, maxValueColumnStartValue, maxValueColumn2StartValue);
+            } catch (IOException e) {
+                logger.error("Failed to retrieve observed maximum values from the state . Will not perform "
+                        + "query until this is accomplished.", e);
+            }
 
             List<String> metaWhereClauses = new ArrayList<>();
             List<String> metaSelectClauses = new ArrayList<>();
@@ -158,10 +201,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             // Incremental load
             String maxValueWhereClause = updateClausesList(
                     metaSelectClauses, metaWhereClauses, maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption,
-                    MAX_MAX_VALUE_COLUMN_NAME, maxValueColumnStartValue, statePropertyMap, fullyQualifiedStateKey);
+                    MAX_MAX_VALUE_COLUMN_NAME, state.getMaxValueColumnStartValue());
             String maxValueWhereClause2 = updateClausesList(
                     metaSelectClauses, metaWhereClauses, maxValueColumn2Name, maxValueColumn2Type, maxValueColumn2TypeOption,
-                    MAX_MAX_VALUE_COLUMN2_NAME, maxValueColumn2StartValue, statePropertyMap, fullyQualifiedStateKey2);
+                    MAX_MAX_VALUE_COLUMN2_NAME, state.getMaxValueColumn2StartValue());
 
             // Additional condition
             if (!StringUtils.isEmpty(condition)) {
@@ -191,11 +234,11 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                     numberOfRecords = resultSet.getLong(COUNT_SPLIT_COLUMN_NAME);
                     if(!StringUtils.isEmpty(maxValueColumnName)) {
                         newMaxValue = resultSet.getString(MAX_MAX_VALUE_COLUMN_NAME);
-                        statePropertyMap.put(fullyQualifiedStateKey, newMaxValue);
+                        state.setMaxValueColumnStartValue(newMaxValue);
                     }
                     if(!StringUtils.isEmpty(maxValueColumn2Name)) {
                         newMaxValue = resultSet.getString(MAX_MAX_VALUE_COLUMN2_NAME);
-                        statePropertyMap.put(fullyQualifiedStateKey2, newMaxValue);
+                        state.setMaxValueColumn2StartValue(newMaxValue);
                     }
                 } else {
                     logger.error(
@@ -241,6 +284,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.index", Integer.toString(i));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "segment.original.filename", fragmentIdentifier);
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.count", Long.toString(chunks));
+                sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.sql", query);
 
                 String tenant = context.getProperty(TENANT).getValue();
                 String source = context.getProperty(SOURCE).getValue();
@@ -264,9 +308,9 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             session.commit();
             try {
                 // Update the state
-                stateManager.setState(statePropertyMap, Scope.CLUSTER);
+                state.writeToPropertiesFile(stateFile);
             } catch (IOException ioe) {
-                logger.error("{} failed to update State Manager, observed maximum value will not be recorded. "
+                logger.error("{} failed to update State, observed maximum value will not be recorded. "
                                 + "Also, any generated SQL statements may be duplicated.",
                         new Object[]{this, ioe});
             }
@@ -321,8 +365,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
     private String updateClausesList(List<String> metaSelectClauses, List<String> metaWhereClauses, String maxValueColumnName,
                                      String maxValueColumnType,
-                                     String maxValueColumnTypeOption, String MAX_MAX_VALUE_COLUMN_NAME, String maxValueColumnStartValue,
-                                     Map<String, String> statePropertyMap, String fullyQualifiedStateKey) {
+                                     String maxValueColumnTypeOption, String MAX_MAX_VALUE_COLUMN_NAME, String maxValueColumnStartValue) {
         String maxValueWhereClause;
         if (!StringUtils.isEmpty(maxValueColumnName)) {
 
@@ -334,12 +377,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 metaSelectClauses.add(String.format("TO_CHAR(MAX(%s), '%s') AS %s", maxValueColumnName,
                         maxValueColumnTypeOption, MAX_MAX_VALUE_COLUMN_NAME));
             }
-            String maxValue = statePropertyMap.get(fullyQualifiedStateKey);
-
-            if(StringUtils.isBlank(maxValue)) {
-                maxValue = maxValueColumnStartValue;
-            }
-            maxValueWhereClause = getMaxValueWhereClause(maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption, maxValue);
+            maxValueWhereClause = getMaxValueWhereClause(maxValueColumnName, maxValueColumnType, maxValueColumnTypeOption, maxValueColumnStartValue);
             metaWhereClauses.add(maxValueWhereClause);
             return maxValueWhereClause;
         }
@@ -368,6 +406,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 QUERY_TIMEOUT,
                 NUMBER_OF_PARTITIONS,
                 SPLIT_COLUMN,
+                STATE_FILE,
                 TENANT,
                 SOURCE,
                 SCHEMA,
@@ -495,6 +534,14 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         SPLIT_COLUMN = new PropertyDescriptor.Builder()
                 .name("split-column")
                 .displayName("Split column")
+                .required(true)
+                .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+                .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+                .build();
+
+        STATE_FILE = new PropertyDescriptor.Builder()
+                .name("state-file")
+                .displayName("State file")
                 .required(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
