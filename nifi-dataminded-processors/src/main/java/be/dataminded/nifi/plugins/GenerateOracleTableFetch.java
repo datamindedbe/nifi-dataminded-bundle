@@ -84,17 +84,19 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
             this.maxValueColumnStartValue = defaultMaxValueColumnStartValue;
             this.maxValueColumn2StartValue = defaultMaxValueColumn2StartValue;
 
-            File f = new File(filePath);
-            // if the file does not exist, then we set it to the default value
-            if(!StringUtils.isEmpty(filePath) && f.exists() && !f.isDirectory()) {
-                Properties properties = new Properties();
-                properties.load(new FileInputStream(filePath));
-                // if there is no start value, we assume there is no incremental load
-                if (!StringUtils.isEmpty(defaultMaxValueColumnStartValue)) {
-                    this.maxValueColumnStartValue = properties.getProperty("maxValueColumnStartValue");
-                }
-                if (!StringUtils.isEmpty(defaultMaxValueColumn2StartValue)) {
-                    this.maxValueColumn2StartValue = properties.getProperty("maxValueColumn2StartValue");
+            if (!StringUtils.isEmpty(filePath)) {
+                File f = new File(filePath);
+                // if the file does not exist, then we set it to the default value
+                if(f.exists() && !f.isDirectory()) {
+                    Properties properties = new Properties();
+                    properties.load(new FileInputStream(filePath));
+                    // if there is no start value, we assume there is no incremental load
+                    if (!StringUtils.isEmpty(defaultMaxValueColumnStartValue)) {
+                        this.maxValueColumnStartValue = properties.getProperty("maxValueColumnStartValue");
+                    }
+                    if (!StringUtils.isEmpty(defaultMaxValueColumn2StartValue)) {
+                        this.maxValueColumn2StartValue = properties.getProperty("maxValueColumn2StartValue");
+                    }
                 }
             }
         }
