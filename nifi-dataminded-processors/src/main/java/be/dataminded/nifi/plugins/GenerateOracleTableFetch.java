@@ -24,6 +24,8 @@ import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.components.ValidationContext;
+import org.apache.nifi.components.ValidationResult;
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.components.state.StateManager;
 import org.apache.nifi.components.state.StateMap;
@@ -79,25 +81,35 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                                            String defaultMaxValueColumnStartValue,
                                            String defaultMaxValueColumn2StartValue) throws IOException {
 
+            this.maxValueColumnStartValue = defaultMaxValueColumnStartValue;
+            this.maxValueColumn2StartValue = defaultMaxValueColumn2StartValue;
+
             File f = new File(filePath);
             // if the file does not exist, then we set it to the default value
-            if(f.exists() && !f.isDirectory()) {
+            if(!StringUtils.isEmpty(filePath) && f.exists() && !f.isDirectory()) {
                 Properties properties = new Properties();
                 properties.load(new FileInputStream(filePath));
-
-                this.maxValueColumnStartValue = properties.getProperty("maxValueColumnStartValue");
-                this.maxValueColumn2StartValue = properties.getProperty("maxValueColumn2StartValue");
-            } else {
-                this.maxValueColumnStartValue = defaultMaxValueColumnStartValue;
-                this.maxValueColumn2StartValue = defaultMaxValueColumn2StartValue;
+                // if there is no start value, we assume there is no incremental load
+                if (!StringUtils.isEmpty(defaultMaxValueColumnStartValue)) {
+                    this.maxValueColumnStartValue = properties.getProperty("maxValueColumnStartValue");
+                }
+                if (!StringUtils.isEmpty(defaultMaxValueColumn2StartValue)) {
+                    this.maxValueColumn2StartValue = properties.getProperty("maxValueColumn2StartValue");
+                }
             }
         }
 
         public void writeToPropertiesFile(String filePath) throws IOException {
-            Properties properties = new Properties();
-            properties.setProperty("maxValueColumnStartValue", this.maxValueColumnStartValue);
-            properties.setProperty("maxValueColumn2StartValue", this.maxValueColumn2StartValue);
-            properties.store(new FileWriter(filePath), "Writing properties file");
+            if(!StringUtils.isEmpty(filePath)) {
+                Properties properties = new Properties();
+                if (!StringUtils.isEmpty(maxValueColumnStartValue)) {
+                    properties.setProperty("maxValueColumnStartValue", this.maxValueColumnStartValue);
+                }
+                if (!StringUtils.isEmpty(maxValueColumn2StartValue)) {
+                    properties.setProperty("maxValueColumn2StartValue", this.maxValueColumn2StartValue);
+                }
+                properties.store(new FileWriter(filePath), "Writing properties file");
+            }
         }
 
         public String getMaxValueColumnStartValue() {
@@ -153,6 +165,45 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor OPTION_TO_NUMBER;
     static final PropertyDescriptor CONDITION;
 
+
+    @Override
+    protected Collection<ValidationResult> customValidate(ValidationContext validationContext) {
+        Set<ValidationResult> results = new HashSet<>();
+
+        final String stateFile = validationContext.getProperty(STATE_FILE).getValue();
+
+        // Ensure that if max value column is set, also the state file and start value is set
+        String maxValueColumnName = validationContext.getProperty(MAX_VALUE_COLUMN).getValue();
+        String maxValueColumnStartValue = validationContext.getProperty(MAX_VALUE_COLUMN_START_VALUE).getValue();
+
+        String maxValueColumn2Name = validationContext.getProperty(MAX_VALUE_COLUMN2).getValue();
+        String maxValueColumn2StartValue = validationContext.getProperty(MAX_VALUE_COLUMN2_START_VALUE).getValue();
+
+
+        if (StringUtils.isEmpty(maxValueColumnName) != StringUtils.isEmpty(maxValueColumnStartValue)) {
+            results.add(new ValidationResult.Builder().valid(false).explanation(
+                    "Maximum-value Column Name and Maximum-value Column Start must both be set.").build());
+        }
+
+        if (!StringUtils.isEmpty(maxValueColumnName) && StringUtils.isEmpty(stateFile)) {
+            results.add(new ValidationResult.Builder().valid(false).explanation(
+                    "Maximum-value Column Name can not be set without setting the state file.").build());
+        }
+
+        if (StringUtils.isEmpty(maxValueColumn2Name) != StringUtils.isEmpty(maxValueColumn2StartValue)) {
+            results.add(new ValidationResult.Builder().valid(false).explanation(
+                    "Maximum-value 2 Column Name and Maximum-value 2 Column Start must both be set.").build());
+        }
+
+        if (!StringUtils.isEmpty(maxValueColumn2Name) && StringUtils.isEmpty(stateFile)) {
+            results.add(new ValidationResult.Builder().valid(false).explanation(
+                    "Maximum-value 2 Column Name can not be set without setting the state file.").build());
+        }
+
+        return results;
+    }
+
+
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
         final ComponentLog logger = getLogger();
@@ -177,7 +228,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final String condition = context.getProperty(CONDITION).getValue();
 
         try {
-            // Get the current version of the
+            // Get the current version of incremental state
             IncrementalState state = new IncrementalState();
             try {
                 state.loadFromPropertiesFile(stateFile, maxValueColumnStartValue, maxValueColumn2StartValue);
@@ -548,7 +599,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         STATE_FILE = new PropertyDescriptor.Builder()
                 .name("state-file")
                 .displayName("State file")
-                .required(true)
+                .required(false)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
                 .build();
