@@ -212,7 +212,7 @@ public class GenerateOracleTableQueryBasedFetch extends AbstractProcessor {
 
                     ResultSet resultSet = statement.executeQuery(maxValueQuery);
                     if (resultSet.next()) {
-                        String newState = resultSet.getString(0);
+                        String newState = resultSet.getString(1);
                         state.setMaxValueColumnNewState(newState);
                     } else {
                         logger.error(
@@ -511,7 +511,7 @@ public class GenerateOracleTableQueryBasedFetch extends AbstractProcessor {
 
         NUMBER_OF_RECORDS_PER_PARTITIONS = new PropertyDescriptor.Builder()
                 .name("number-of-records-per-partition")
-                .displayName("Number of records per partition partitions")
+                .displayName("Number of records per partition")
                 .defaultValue("10000")
                 .addValidator(StandardValidators.NON_NEGATIVE_INTEGER_VALIDATOR)
                 .build();
