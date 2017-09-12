@@ -1,5 +1,6 @@
 be.dataminded.nifi.plugins.GenerateOracleTableFetch
 be.dataminded.nifi.plugins.GenerateOracleTableTimeLimitedFetch
+be.dataminded.nifi.plugins.GenerateOracleTableQueryBasedFetch
 be.dataminded.nifi.plugins.ExecuteOracleSQL
 be.dataminded.nifi.plugins.UpdateAttributeREST
 be.dataminded.nifi.plugins.SimpleTriggeredProcessExecutor
