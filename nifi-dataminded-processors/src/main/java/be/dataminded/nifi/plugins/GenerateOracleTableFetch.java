@@ -117,6 +117,23 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
+
+        FlowFile fileToProcess = null;
+        if (context.hasIncomingConnection()) {
+            fileToProcess = session.get();
+
+            // If we have no FlowFile, and all incoming connections are self-loops then we can continue on.
+            // However, if we have no FlowFile and we have connections coming from other Processors, then
+            // we know that we should run only if we have a FlowFile.
+            if (fileToProcess == null && context.hasNonLoopConnection()) {
+                return;
+            }
+        }
+
+        if (fileToProcess == null) {
+            fileToProcess = session.create();
+        }
+
         final ComponentLog logger = getLogger();
 
         final DBCPService dbcpService = context.getProperty(DBCP_SERVICE).asControllerService(DBCPService.class);
@@ -254,12 +271,10 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                         schema,
                         tableName,
                         String.join(" AND ", queryWhereClauses));
-                FlowFile sqlFlowFile = session.create();
+                FlowFile sqlFlowFile = session.create(fileToProcess);
                 sqlFlowFile = session.write(sqlFlowFile, out -> out.write(query.getBytes()));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "table.name", sanitizeAttribute(tableName));
-
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "generateoracletablefetch.total.row.count", String.valueOf(numberOfRecords));
-
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.identifier", fragmentIdentifier);
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.index", Integer.toString(i));
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "segment.original.filename", fragmentIdentifier);
@@ -274,7 +289,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
                 if (source != null) {
                     sqlFlowFile = session.putAttribute(sqlFlowFile, "source.name", sanitizeAttribute(source));
-
                 }
 
                 if (schema != null) {
@@ -283,7 +297,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
                 session.transfer(sqlFlowFile, REL_SUCCESS);
             }
-
+            session.remove(fileToProcess);
             session.commit();
             try {
                 // Update the state
