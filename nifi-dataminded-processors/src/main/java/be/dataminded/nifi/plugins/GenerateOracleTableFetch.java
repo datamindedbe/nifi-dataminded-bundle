@@ -18,6 +18,7 @@ package be.dataminded.nifi.plugins;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.behavior.Stateful;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
@@ -30,6 +31,7 @@ import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.components.state.StateManager;
 import org.apache.nifi.components.state.StateMap;
 import org.apache.nifi.dbcp.DBCPService;
+import org.apache.nifi.expression.AttributeExpression;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.AbstractProcessor;
@@ -56,6 +58,8 @@ import java.util.concurrent.TimeUnit;
         + "to fetch only those records that have max values greater than the retained values. This can be used for "
         + "incremental fetching, fetching of newly added rows, etc. To clear the maximum values, clear the state of the processor "
         + "per the State Management documentation")
+@DynamicProperty(name = "Information property", value = "Attribute Expression Language", supportsExpressionLanguage = true, description = "Attributes are propagated to the created flow files")
+@WritesAttribute(attribute = "See additional details", description = "This processor may write or remove zero or more attributes as described in additional details")
 @WritesAttributes({
         @WritesAttribute(attribute = "tenant.name", description = "Hint for which tenant this data is ingested"),
         @WritesAttribute(attribute = "source.name", description = "Hint for which source this data is ingested"),
@@ -116,8 +120,23 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     }
 
     @Override
+    protected PropertyDescriptor getSupportedDynamicPropertyDescriptor(final String propertyDescriptorName) {
+        PropertyDescriptor.Builder propertyBuilder = new PropertyDescriptor.Builder()
+                .name(propertyDescriptorName)
+                .required(false)
+                .addValidator(StandardValidators.ATTRIBUTE_KEY_PROPERTY_NAME_VALIDATOR)
+                .addValidator(StandardValidators.createAttributeExpressionLanguageValidator(AttributeExpression.ResultType.STRING, true))
+                .expressionLanguageSupported(true)
+                .dynamic(true);
+
+        return propertyBuilder
+                .build();
+    }
+
+    @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
 
+        // Allow this to be triggered by an upstream flowfile
         FlowFile fileToProcess = null;
         if (context.hasIncomingConnection()) {
             fileToProcess = session.get();
@@ -293,6 +312,13 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
                 if (schema != null) {
                     sqlFlowFile = session.putAttribute(sqlFlowFile, "schema.name", sanitizeAttribute(schema));
+                }
+
+                for (final PropertyDescriptor descriptor : context.getProperties().keySet()) {
+                    if (descriptor.isDynamic()) {
+                        String value = context.getProperty(descriptor).getValue();
+                        sqlFlowFile = session.putAttribute(sqlFlowFile, descriptor.getName(), sanitizeAttribute(value));
+                    }
                 }
 
                 session.transfer(sqlFlowFile, REL_SUCCESS);
