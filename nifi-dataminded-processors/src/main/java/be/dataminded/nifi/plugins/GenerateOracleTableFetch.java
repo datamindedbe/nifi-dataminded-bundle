@@ -87,6 +87,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
 
     // Default properties
     static final PropertyDescriptor DBCP_SERVICE;
+    static final PropertyDescriptor SCHEMA;
     static final PropertyDescriptor TABLE_NAME;
     static final PropertyDescriptor COLUMN_NAMES;
     static final PropertyDescriptor NUMBER_OF_PARTITIONS;
@@ -104,7 +105,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     // Information properties
     static final PropertyDescriptor TENANT;
     static final PropertyDescriptor SOURCE;
-    static final PropertyDescriptor SCHEMA;
 
     @Override
     protected Collection<ValidationResult> customValidate(ValidationContext validationContext) {
@@ -395,15 +395,20 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
         return ImmutableList.of(DBCP_SERVICE,
+                                SCHEMA,
                                 TABLE_NAME,
                                 COLUMN_NAMES,
                                 QUERY_TIMEOUT,
                                 NUMBER_OF_PARTITIONS,
                                 SPLIT_COLUMN,
+                                OPTION_TO_NUMBER,
+                                CONDITION,
+                                MAX_VALUE_COLUMN,
+                                MAX_VALUE_COLUMN_TYPE,
+                                MAX_VALUE_COLUMN_TYPE_OPTION,
+                                MAX_VALUE_COLUMN_START_VALUE,
                                 TENANT,
-                                SOURCE,
-                                SCHEMA,
-                                OPTION_TO_NUMBER);
+                                SOURCE);
     }
 
     static {
