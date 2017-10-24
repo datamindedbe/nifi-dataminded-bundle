@@ -91,7 +91,9 @@ public class UpdateAttributeREST extends AbstractProcessor {
 
         // Get flowfile
         FlowFile flowFile = processSession.get();
-        if (flowFile == null) {return;}
+        if (flowFile == null) {
+            return;
+        }
 
         try {
 
@@ -101,16 +103,16 @@ public class UpdateAttributeREST extends AbstractProcessor {
             // Invoke REST service with filename as parameter (For now parameter is just '1')
             String restEndpoint = processContext.getProperty(REST_ENDPOINT).getValue();
             JSONObject jsonResult = Unirest.get(restEndpoint)
-                .header("accept", "application/json")
-                .asJson()
-                .getBody()
-                .getObject();
+                    .header("accept", "application/json")
+                    .asJson()
+                    .getBody()
+                    .getObject();
 
             // Add attributes to flowfile based on REST call
-            Map<String,String> newAttributes = new HashMap<>();
+            Map<String, String> newAttributes = new HashMap<>();
             newAttributes.put(ATT_ACCOUNT_NAME, jsonResult.getString("name"));
             newAttributes.put(ATT_ACCOUNT_USERNAME, jsonResult.getString("username"));
-            FlowFile updatedFlowFile = processSession.putAllAttributes(flowFile,newAttributes);
+            FlowFile updatedFlowFile = processSession.putAllAttributes(flowFile, newAttributes);
 
             // Transfer flowfile to success state
             processSession.transfer(updatedFlowFile, REL_SUCCESS);
