@@ -107,19 +107,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor SOURCE;
 
     @Override
-    protected Collection<ValidationResult> customValidate(ValidationContext validationContext) {
-        Set<ValidationResult> results = new HashSet<>();
-
-        // Ensure that if max value column is set, the start value
-        String maxValueColumnName = validationContext.getProperty(MAX_VALUE_COLUMN).getValue();
-        String maxValueColumnStartValue = validationContext.getProperty(MAX_VALUE_COLUMN_START_VALUE).getValue();
-
-        // Add additional validation here
-
-        return results;
-    }
-
-    @Override
     protected PropertyDescriptor getSupportedDynamicPropertyDescriptor(final String propertyDescriptorName) {
         PropertyDescriptor.Builder propertyBuilder = new PropertyDescriptor.Builder()
                 .name(propertyDescriptorName)
