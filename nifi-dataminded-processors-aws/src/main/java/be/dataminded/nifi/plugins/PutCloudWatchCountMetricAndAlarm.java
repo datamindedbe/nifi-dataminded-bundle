@@ -180,6 +180,8 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             logger.info("Successfully published CloudWatch metric for {}", new Object[]{flowFile});
         } catch (JSONException e) {
             logger.error("Something when trying to parse the JSON body of the flowFile: " + e.getMessage(), e);
+            flowFile = session.penalize(flowFile);
+            session.transfer(flowFile, REL_FAILURE);
         } catch (Exception e) {
             logger.error("Failed to publish CloudWatch metric for {} due to: ", new Object[]{flowFile}, e);
             flowFile = session.penalize(flowFile);
