@@ -20,6 +20,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import java.sql.Timestamp;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+
 public class ArgumentUtils {
     private final static char QUOTE = '"';
     private final static List<Character> DELIMITING_CHARACTERS = new ArrayList<>(3);
@@ -66,4 +72,23 @@ public class ArgumentUtils {
 
         return args;
     }
+
+
+
+
+    public static Timestamp convertStringToTimestamp(String str_date, String dateFormat) {
+        // see http://stackoverflow.com/a/30341685
+
+        try {
+            SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
+            Date parsedDate = formatter.parse(str_date);
+            return new Timestamp(parsedDate.getTime());
+        } catch (ParseException e) {
+            System.out.println("Could not parse '" + str_date + "' using the format  '" + dateFormat + "'.\n" + e);
+            return null;
+        }
+    }
+
+
+
 }
