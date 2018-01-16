@@ -415,6 +415,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .name("Table Name")
                 .description("The name of the database table to be queried.")
                 .required(true)
+                .expressionLanguageSupported(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR).build();
 
         COLUMN_NAMES = new org.apache.nifi.components.PropertyDescriptor.Builder()
@@ -422,6 +423,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .description(
                         "A comma-separated list of column names to be used in the query. If your database requires special treatment of the names (quoting, e.g.), each name should include such treatment. If no column names are supplied, all columns in the specified table will be returned.")
                 .required(false)
+                .expressionLanguageSupported(true)
                 .defaultValue("*")
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build();
@@ -439,6 +441,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .name("number-of-partitions")
                 .displayName("Number of partitions")
                 .defaultValue("4")
+                .expressionLanguageSupported(true)
                 .addValidator(StandardValidators.NON_NEGATIVE_INTEGER_VALIDATOR)
                 .build();
 
@@ -446,6 +449,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .name("split-column")
                 .displayName("Split column")
                 .required(true)
+                .expressionLanguageSupported(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
                 .build();
@@ -455,6 +459,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .displayName("Optional to number")
                 .defaultValue("false")
                 .required(false)
+                .expressionLanguageSupported(true)
                 .allowableValues("true", "false")
                 .addValidator(StandardValidators.BOOLEAN_VALIDATOR)
                 .description("option if the split column has to be cast to a number")
@@ -478,6 +483,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                         + "types should not be listed in this property, and will result in error(s) during processing. NOTE: It is important "
                         + "to use consistent max-value column names for a given table for incremental fetch to work properly.")
                 .required(false)
+                .expressionLanguageSupported(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build();
 
@@ -485,6 +491,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .name("Maximum-value Column Type")
                 .description("The type of the max value column so we can build the correct queries")
                 .required(false)
+                .expressionLanguageSupported(true)
                 .allowableValues(MAX_VALUE_COLUMN_TYPE_NONE, MAX_VALUE_COLUMN_TYPE_INT, MAX_VALUE_COLUMN_TYPE_DATE,
                         MAX_VALUE_COLUMN_TYPE_TIMESTAMP)
                 .defaultValue(MAX_VALUE_COLUMN_TYPE_NONE)
@@ -494,6 +501,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .name("Maximum-value Column Type option")
                 .description("Some types, like Date and Timstamp, require additional options to work as expected")
                 .required(false)
+                .expressionLanguageSupported(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build();
 
@@ -501,6 +509,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .name("Maximum-value Column start value")
                 .description("The initial value for Maximum-value Column to start from.")
                 .required(false)
+                .expressionLanguageSupported(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .build();
 
@@ -509,6 +518,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .displayName("Tenant")
                 .required(false)
                 .defaultValue(null)
+                .expressionLanguageSupported(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .description("Hint for which tenant this data is ingested")
                 .build();
@@ -518,6 +528,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .displayName("Source")
                 .required(false)
                 .defaultValue(null)
+                .expressionLanguageSupported(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .description("Hint for which source this data is ingested")
                 .build();
@@ -527,6 +538,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .displayName("Schema")
                 .defaultValue(null)
                 .required(true)
+                .expressionLanguageSupported(true)
                 .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
                 .description("Hint for which schema this data is ingested")
                 .build();
