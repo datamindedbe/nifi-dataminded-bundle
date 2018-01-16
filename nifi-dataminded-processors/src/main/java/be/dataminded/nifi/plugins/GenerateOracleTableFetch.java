@@ -143,19 +143,19 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
         final ComponentLog logger = getLogger();
 
         final DBCPService dbcpService = context.getProperty(DBCP_SERVICE).asControllerService(DBCPService.class);
-        final String tableName = context.getProperty(TABLE_NAME).getValue();
-        final String schema = context.getProperty(SCHEMA).getValue();
-        final String columnNames = context.getProperty(COLUMN_NAMES).getValue();
-        final String splitColumnName = context.getProperty(SPLIT_COLUMN).getValue();
-        final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).getValue());
+        final String tableName = context.getProperty(TABLE_NAME).evaluateAttributeExpressions(fileToProcess).getValue();
+        final String schema = context.getProperty(SCHEMA).evaluateAttributeExpressions(fileToProcess).getValue();
+        final String columnNames = context.getProperty(COLUMN_NAMES).evaluateAttributeExpressions(fileToProcess).getValue();
+        final String splitColumnName = context.getProperty(SPLIT_COLUMN).evaluateAttributeExpressions(fileToProcess).getValue();
+        final int numberOfFetches = Integer.parseInt(context.getProperty(NUMBER_OF_PARTITIONS).evaluateAttributeExpressions(fileToProcess).getValue());
         final Integer queryTimeout = context.getProperty(QUERY_TIMEOUT).asTimePeriod(TimeUnit.SECONDS).intValue();
-        final boolean optionalToNumber = context.getProperty(OPTION_TO_NUMBER).asBoolean();
+        final boolean optionalToNumber = context.getProperty(OPTION_TO_NUMBER).evaluateAttributeExpressions(fileToProcess).asBoolean();
         final String condition = context.getProperty(CONDITION).getValue();
 
-        final String maxValueColumnName = context.getProperty(MAX_VALUE_COLUMN).getValue();
-        final String maxValueColumnType = context.getProperty(MAX_VALUE_COLUMN_TYPE).getValue();
-        final String maxValueColumnTypeOption = context.getProperty(MAX_VALUE_COLUMN_TYPE_OPTION).getValue();
-        final String maxValueColumnStartValue = context.getProperty(MAX_VALUE_COLUMN_START_VALUE).getValue();
+        final String maxValueColumnName = context.getProperty(MAX_VALUE_COLUMN).evaluateAttributeExpressions(fileToProcess).getValue();
+        final String maxValueColumnType = context.getProperty(MAX_VALUE_COLUMN_TYPE).evaluateAttributeExpressions(fileToProcess).getValue();
+        final String maxValueColumnTypeOption = context.getProperty(MAX_VALUE_COLUMN_TYPE_OPTION).evaluateAttributeExpressions(fileToProcess).getValue();
+        final String maxValueColumnStartValue = context.getProperty(MAX_VALUE_COLUMN_START_VALUE).evaluateAttributeExpressions(fileToProcess).getValue();
 
         // State manager
         final StateManager stateManager = context.getStateManager();
@@ -286,8 +286,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "segment.original.filename", fragmentIdentifier);
                 sqlFlowFile = session.putAttribute(sqlFlowFile, "fragment.count", Long.toString(chunks));
 
-                String tenant = context.getProperty(TENANT).getValue();
-                String source = context.getProperty(SOURCE).getValue();
+                String tenant = context.getProperty(TENANT).evaluateAttributeExpressions(fileToProcess).getValue();
+                String source = context.getProperty(SOURCE).evaluateAttributeExpressions(fileToProcess).getValue();
 
                 if (tenant != null) {
                     sqlFlowFile = session.putAttribute(sqlFlowFile, "tenant.name", sanitizeAttribute(tenant));
