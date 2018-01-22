@@ -27,6 +27,7 @@ import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationContext;
 import org.apache.nifi.components.ValidationResult;
+import org.apache.nifi.components.Validator;
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.components.state.StateManager;
 import org.apache.nifi.components.state.StateMap;
@@ -77,6 +78,29 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final String MAX_VALUE_COLUMN_TYPE_INT = "Integer";
     static final String MAX_VALUE_COLUMN_TYPE_DATE = "Date";
     static final String MAX_VALUE_COLUMN_TYPE_TIMESTAMP = "Timestamp";
+    static final List<String> MAX_VALUE_COLUMN_AUTH_VALUES =  Arrays.asList(
+            MAX_VALUE_COLUMN_TYPE_NONE,
+            MAX_VALUE_COLUMN_TYPE_INT,
+            MAX_VALUE_COLUMN_TYPE_DATE,
+            MAX_VALUE_COLUMN_TYPE_TIMESTAMP);
+
+    private static final Validator MAX_VALUE_COLUMN_TYPE_VALIDATOR = new Validator() {
+        @Override
+        public ValidationResult validate(String subject, String value, ValidationContext context) {
+            if (context.isExpressionLanguageSupported(subject) && context.isExpressionLanguagePresent(value)) {
+                return new ValidationResult.Builder().subject(subject).input(value).explanation("Expression Language Present").valid(true).build();
+            }
+
+            String reason = null;
+
+            if (! MAX_VALUE_COLUMN_AUTH_VALUES.contains(value)) {
+                reason = "value is not in allowed values : "+MAX_VALUE_COLUMN_AUTH_VALUES.toString();
+            }
+
+            return new ValidationResult.Builder().subject(subject).input(value).explanation(reason).valid(reason == null).build();
+
+        }
+    };
 
     static final String COUNT_SPLIT_COLUMN_NAME = "CountSplit";
     static final String MIN_SPLIT_COLUMN_NAME = "MinSplit";
@@ -101,6 +125,8 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
     static final PropertyDescriptor MAX_VALUE_COLUMN_TYPE;
     static final PropertyDescriptor MAX_VALUE_COLUMN_TYPE_OPTION;
     static final PropertyDescriptor MAX_VALUE_COLUMN_START_VALUE;
+
+
 
     // Information properties
     static final PropertyDescriptor TENANT;
@@ -460,7 +486,6 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .defaultValue("false")
                 .required(false)
                 .expressionLanguageSupported(true)
-                .allowableValues("true", "false")
                 .addValidator(StandardValidators.BOOLEAN_VALIDATOR)
                 .description("option if the split column has to be cast to a number")
                 .build();
@@ -492,8 +517,7 @@ public class GenerateOracleTableFetch extends AbstractProcessor {
                 .description("The type of the max value column so we can build the correct queries")
                 .required(false)
                 .expressionLanguageSupported(true)
-                .allowableValues(MAX_VALUE_COLUMN_TYPE_NONE, MAX_VALUE_COLUMN_TYPE_INT, MAX_VALUE_COLUMN_TYPE_DATE,
-                        MAX_VALUE_COLUMN_TYPE_TIMESTAMP)
+                .addValidator(MAX_VALUE_COLUMN_TYPE_VALIDATOR)
                 .defaultValue(MAX_VALUE_COLUMN_TYPE_NONE)
                 .build();
 
