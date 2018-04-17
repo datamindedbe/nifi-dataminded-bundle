@@ -1,1 +1,2 @@
 be.dataminded.nifi.plugins.PutCloudWatchCountMetricAndAlarm
+be.dataminded.nifi.plugins.PutBatchJob
