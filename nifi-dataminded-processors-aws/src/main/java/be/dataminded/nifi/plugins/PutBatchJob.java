@@ -221,6 +221,7 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
         overrides.setVcpus(cpu);
         overrides.setMemory(memoryInMb);
         overrides.setEnvironment(environment);
+        //TODO: setCommand
 
         String jobDefinition = getJobDefinition(client, image, jobRole);
         if(jobDefinition.isEmpty()) {
