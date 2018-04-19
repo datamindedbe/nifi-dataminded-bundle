@@ -4,11 +4,7 @@ import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.services.batch.AWSBatchClient;
-import com.amazonaws.services.batch.model.ContainerOverrides;
-import com.amazonaws.services.batch.model.KeyValuePair;
-import com.amazonaws.services.batch.model.SubmitJobRequest;
-import com.amazonaws.services.batch.model.SubmitJobResult;
-import com.amazonaws.services.cloudwatch.AmazonCloudWatchClient;
+import com.amazonaws.services.batch.model.*;
 import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.SupportsBatching;
@@ -138,7 +134,6 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
     /**
      * Create client using aws credentials provider. This is the preferred way for creating clients
      */
-
     @Override
     protected AWSBatchClient createClient(ProcessContext processContext, AWSCredentialsProvider awsCredentialsProvider, ClientConfiguration clientConfiguration) {
         getLogger().info("Creating client using aws credentials provider");
@@ -233,7 +228,7 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
         }
 
         Map<String, String> parameters = new HashMap<>();
-        parameters.put("TriggeredFromNifi", "True");
+        parameters.put("TriggeredBy", "Nifi");
 
         SubmitJobRequest request = new SubmitJobRequest();
         request.setJobName(jobName);
@@ -246,15 +241,75 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
         logger.info("Job submitted with id " + result.getJobId());
     }
 
-    private String registerJobDefinition(AWSBatchClient client, String image, String jobRole) {
-
-
-        return "";
-    }
-
+    /**
+     * Find the most recent revision of the job definition named after the image + with the right inage & tag
+     * @param image Take fully qualified image (host/org + name + tag e.g.: '724521671933.dkr.ecr.eu-west-1.amazonaws.com/ci-test:latest')
+     * @param jobRole AWS Role that should be assumed by the task/container to get access to resources required
+     * @return job definition arn
+     */
     private String getJobDefinition(AWSBatchClient client, String image, String jobRole) {
 
+        DescribeJobDefinitionsRequest request = new DescribeJobDefinitionsRequest()
+                .withJobDefinitionName(extractImageNameFromIdentifier(image))
+                .withStatus("ACTIVE")
+                .withMaxResults(100);
 
-        return "";
+        DescribeJobDefinitionsResult result = client.describeJobDefinitions(request);
+
+        // for definition in definitions:
+        //  Confirm the definition use right image + tag
+        //  Confirm the job-role we want is attached this job defintion (or that no role is attached at all if wanted)
+        List<JobDefinition> matches = new ArrayList<>();
+        for(JobDefinition def : result.getJobDefinitions()) {
+            if(def.getContainerProperties().getImage().equals(image) &&
+                    def.getContainerProperties().getJobRoleArn().equals(jobRole)) {
+                matches.add(def);
+            }
+        }
+
+        if(matches.isEmpty()) {
+            return "";
+        } else {
+           matches.sort(Comparator.comparing(JobDefinition::getRevision).reversed());
+           return matches.get(0).getJobDefinitionArn();
+        }
+    }
+
+    /**
+     *   Extract the image-name from a full image-path
+     *   @param image Take fully qualified image (host/org + name + tag e.g.: '724521671933.dkr.ecr.eu-west-1.amazonaws.com/ci-test:latest')
+     *   @return image name without host or tag
+     */
+    private String extractImageNameFromIdentifier(String image) {
+        String[] tokens = image.split("/");
+
+        String imageName = tokens[tokens.length-1];
+        if(imageName.contains(":")) {
+            return imageName.split(":")[0];
+        } else {
+            return imageName;
+        }
+    }
+
+    /**
+     * Register a new job definition named after the image and mark it as "computer generated"
+     * @param image Take fully qualified image (host/org + name + tag e.g.: '724521671933.dkr.ecr.eu-west-1.amazonaws.com/ci-test:latest')
+     * @param jobRole AWS Role that should be assumed by the task/container to get access to resources required
+     * @return job definition arn
+     */
+    private String registerJobDefinition(AWSBatchClient client, String image, String jobRole) {
+
+        RegisterJobDefinitionRequest request = new RegisterJobDefinitionRequest()
+                .withJobDefinitionName(extractImageNameFromIdentifier(image))
+                .withType("container")
+                .withContainerProperties(new ContainerProperties()
+                        .withImage(image)
+                        .withMemory(512)
+                        .withVcpus(1)
+                        .withJobRoleArn(jobRole));
+
+
+        RegisterJobDefinitionResult result = client.registerJobDefinition(request);
+        return result.getJobDefinitionArn();
     }
 }
