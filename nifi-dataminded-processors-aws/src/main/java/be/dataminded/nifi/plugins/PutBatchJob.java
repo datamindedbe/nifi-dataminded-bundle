@@ -71,7 +71,7 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
             .required(true)
             .expressionLanguageSupported(true)
             .defaultValue("1")
-            .addValidator(StandardValidators.NON_NEGATIVE_INTEGER_VALIDATOR)
+            .addValidator(StandardValidators.createLongValidator(1, 256, true))
             .build();
 
     public static final PropertyDescriptor MEMORY = new PropertyDescriptor.Builder()
@@ -82,6 +82,14 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
             .expressionLanguageSupported(true)
             .defaultValue("1GB")
             .addValidator(StandardValidators.DATA_SIZE_VALIDATOR)
+            .build();
+
+    public static final PropertyDescriptor COMMAND = new PropertyDescriptor.Builder()
+            .name("Command")
+            .displayName("Command")
+            .description("The command which the Docker container has to launch, basically the entry-point of the job. If it's not configured, take the default.")
+            .required(false)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor JOB_NAME = new PropertyDescriptor.Builder()
@@ -126,7 +134,7 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
 
     public static final List<PropertyDescriptor> properties =
             Collections.unmodifiableList(
-                    Arrays.asList(IMAGE, IMAGE_TAG, JOB_QUEUE, CPU, MEMORY, JOB_NAME, JOB_ROLE, REGION,
+                    Arrays.asList(IMAGE, IMAGE_TAG, JOB_QUEUE, CPU, MEMORY, COMMAND, JOB_NAME, JOB_ROLE, REGION,
                             AWS_CREDENTIALS_PROVIDER_SERVICE, TIMEOUT, SSL_CONTEXT_SERVICE,
                             ENDPOINT_OVERRIDE, PROXY_HOST, PROXY_HOST_PORT)
             );
@@ -162,6 +170,7 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
             final String jobQueue;
             final Integer cpu;
             final Integer memoryInMb;
+            final String command;
             final String jobName;
             final String jobRole;
 
@@ -171,6 +180,7 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
                 jobQueue = context.getProperty(JOB_QUEUE).evaluateAttributeExpressions().getValue();
                 cpu = context.getProperty(CPU).evaluateAttributeExpressions().asInteger();
                 memoryInMb = context.getProperty(MEMORY).evaluateAttributeExpressions().asDataSize(DataUnit.MB).intValue();
+                command =  context.getProperty(COMMAND).evaluateAttributeExpressions().getValue();
                 jobName = context.getProperty(JOB_NAME).evaluateAttributeExpressions().getValue();
                 jobRole = context.getProperty(JOB_ROLE).evaluateAttributeExpressions().getValue();
             } else {
@@ -179,10 +189,12 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
                 jobQueue = context.getProperty(JOB_QUEUE).evaluateAttributeExpressions(flowFile).getValue();
                 cpu = context.getProperty(CPU).evaluateAttributeExpressions(flowFile).asInteger();
                 memoryInMb = context.getProperty(MEMORY).evaluateAttributeExpressions(flowFile).asDataSize(DataUnit.MB).intValue();
+                command = context.getProperty(COMMAND).evaluateAttributeExpressions(flowFile).getValue();
                 jobName = context.getProperty(JOB_NAME).evaluateAttributeExpressions(flowFile).getValue();
                 jobRole = context.getProperty(JOB_ROLE).evaluateAttributeExpressions(flowFile).getValue();
             }
 
+            // Environment variables
             HashMap<String, String> environmentVariables = new HashMap<>();
             for (PropertyDescriptor entry : context.getProperties().keySet()) {
                 if (entry.isDynamic()) {
@@ -193,8 +205,21 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
                 }
             }
 
+            // Command
+            List<String> commandList = new  ArrayList();
+            if(command != null && !command.isEmpty()) {
+                commandList.add(command);
+            }
+
             // Submit the job
-            submitJob(image + ":" + imageTag, jobQueue, cpu, memoryInMb, jobName, jobRole, environmentVariables);
+            submitJob(image + ":" + imageTag,
+                    jobQueue,
+                    cpu,
+                    memoryInMb,
+                    jobName,
+                    jobRole,
+                    environmentVariables,
+                    commandList);
 
         } catch(final Exception e) {
             if (flowFile == null) {
@@ -208,7 +233,8 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
     }
 
     private void submitJob(String image, String jobQueue, Integer cpu, Integer memoryInMb,
-                           String jobName, String jobRole, HashMap<String, String> environmentVariables) {
+                           String jobName, String jobRole, HashMap<String, String> environmentVariables,
+                           Collection<String> command) {
 
         final AWSBatchClient client = getClient();
 
@@ -221,7 +247,10 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
         overrides.setVcpus(cpu);
         overrides.setMemory(memoryInMb);
         overrides.setEnvironment(environment);
-        //TODO: setCommand
+
+        if(command != null && !command.isEmpty()) {
+            overrides.setCommand(command);
+        }
 
         String jobDefinition = getJobDefinition(client, image, jobRole);
         if(jobDefinition.isEmpty()) {
