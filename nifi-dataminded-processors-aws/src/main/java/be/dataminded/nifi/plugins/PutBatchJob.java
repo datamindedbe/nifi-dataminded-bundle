@@ -161,7 +161,10 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
 
     @Override
     public void onTrigger(ProcessContext context, ProcessSession session) throws ProcessException {
-        FlowFile flowFile = session.get();
+        FlowFile incomingFlowFile = session.get();
+        if (incomingFlowFile == null) {
+            incomingFlowFile = session.create();
+        }
 
         try {
             // Evaluate the variables
@@ -174,25 +177,15 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
             final String jobName;
             final String jobRole;
 
-            if (flowFile == null) {
-                image = context.getProperty(IMAGE).evaluateAttributeExpressions().getValue();
-                imageTag = context.getProperty(IMAGE_TAG).evaluateAttributeExpressions().getValue();
-                jobQueue = context.getProperty(JOB_QUEUE).evaluateAttributeExpressions().getValue();
-                cpu = context.getProperty(CPU).evaluateAttributeExpressions().asInteger();
-                memoryInMb = context.getProperty(MEMORY).evaluateAttributeExpressions().asDataSize(DataUnit.MB).intValue();
-                command =  context.getProperty(COMMAND).evaluateAttributeExpressions().getValue();
-                jobName = context.getProperty(JOB_NAME).evaluateAttributeExpressions().getValue();
-                jobRole = context.getProperty(JOB_ROLE).evaluateAttributeExpressions().getValue();
-            } else {
-                image = context.getProperty(IMAGE).evaluateAttributeExpressions(flowFile).getValue();
-                imageTag = context.getProperty(IMAGE_TAG).evaluateAttributeExpressions(flowFile).getValue();
-                jobQueue = context.getProperty(JOB_QUEUE).evaluateAttributeExpressions(flowFile).getValue();
-                cpu = context.getProperty(CPU).evaluateAttributeExpressions(flowFile).asInteger();
-                memoryInMb = context.getProperty(MEMORY).evaluateAttributeExpressions(flowFile).asDataSize(DataUnit.MB).intValue();
-                command = context.getProperty(COMMAND).evaluateAttributeExpressions(flowFile).getValue();
-                jobName = context.getProperty(JOB_NAME).evaluateAttributeExpressions(flowFile).getValue();
-                jobRole = context.getProperty(JOB_ROLE).evaluateAttributeExpressions(flowFile).getValue();
-            }
+            image = context.getProperty(IMAGE).evaluateAttributeExpressions(incomingFlowFile).getValue();
+            imageTag = context.getProperty(IMAGE_TAG).evaluateAttributeExpressions(incomingFlowFile).getValue();
+            jobQueue = context.getProperty(JOB_QUEUE).evaluateAttributeExpressions(incomingFlowFile).getValue();
+            cpu = context.getProperty(CPU).evaluateAttributeExpressions(incomingFlowFile).asInteger();
+            memoryInMb = context.getProperty(MEMORY).evaluateAttributeExpressions(incomingFlowFile).asDataSize(DataUnit.MB).intValue();
+            command = context.getProperty(COMMAND).evaluateAttributeExpressions(incomingFlowFile).getValue();
+            jobName = context.getProperty(JOB_NAME).evaluateAttributeExpressions(incomingFlowFile).getValue();
+            jobRole = context.getProperty(JOB_ROLE).evaluateAttributeExpressions(incomingFlowFile).getValue();
+
 
             // Environment variables
             HashMap<String, String> environmentVariables = new HashMap<>();
@@ -200,19 +193,19 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
                 if (entry.isDynamic()) {
                     if(!environmentVariables.containsKey(entry.getName())) {
                         environmentVariables.put(entry.getName(),
-                                context.getProperty(entry).evaluateAttributeExpressions(flowFile).getValue());
+                                context.getProperty(entry).evaluateAttributeExpressions(incomingFlowFile).getValue());
                     }
                 }
             }
 
             // Command
-            List<String> commandList = new  ArrayList();
+            List<String> commandList = new ArrayList<>();
             if(command != null && !command.isEmpty()) {
                 commandList.add(command);
             }
 
             // Submit the job
-            submitJob(image + ":" + imageTag,
+            String jobId = submitJob(image + ":" + imageTag,
                     jobQueue,
                     cpu,
                     memoryInMb,
@@ -221,18 +214,23 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
                     environmentVariables,
                     commandList);
 
+            // Create a new flowfile and return it
+            FlowFile returnFlowFile = session.create(incomingFlowFile);
+            session.putAttribute(returnFlowFile, "batch.jobId", jobId);
+            session.transfer (returnFlowFile, REL_FAILURE);
+
         } catch(final Exception e) {
-            if (flowFile == null) {
+            if (incomingFlowFile == null) {
                 logger.error("Failed to launch batch job", new Object[]{e});
             } else {
-                logger.error("Failed to launch batch job", new Object[]{flowFile, e});
-                flowFile = session.penalize(flowFile);
-                session.transfer (flowFile, REL_FAILURE);
+                logger.error("Failed to launch batch job", new Object[]{incomingFlowFile, e});
+                incomingFlowFile = session.penalize(incomingFlowFile);
+                session.transfer (incomingFlowFile, REL_FAILURE);
             }
         }
     }
 
-    private void submitJob(String image, String jobQueue, Integer cpu, Integer memoryInMb,
+    private String submitJob(String image, String jobQueue, Integer cpu, Integer memoryInMb,
                            String jobName, String jobRole, HashMap<String, String> environmentVariables,
                            Collection<String> command) {
 
@@ -269,6 +267,7 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
 
         SubmitJobResult result = client.submitJob(request);
         logger.info("Job submitted with id " + result.getJobId());
+        return result.getJobId();
     }
 
     /**
