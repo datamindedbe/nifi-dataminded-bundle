@@ -30,7 +30,7 @@ public class TestPutBatchJob {
         runner.setProperty(PutBatchJob.IMAGE_TAG, "latest");
         runner.setProperty(PutBatchJob.JOB_QUEUE, "acc-high-priority");
         runner.setProperty(PutBatchJob.CPU, "4");
-        runner.setProperty(PutBatchJob.MEMORY, "8192");
+        runner.setProperty(PutBatchJob.MEMORY, "8192 MB");
         runner.setProperty(PutBatchJob.COMMAND, "spark-submit --packages org.apache.spark:spark-hive_2.11:2.3.0 --master local[*] --driver-memory 6g --conf spark.hadoop.fs.s3a.connection.maximum=100 --conf spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version=2 --class be.persgroep.datalake.google.CleanDfpLogs s3a://dpg-datalake-artifacts/snapshot/be/persgroep/datalake/google_2.11/0.0.2-1620-g2094339/google_2.11-0.0.2-1620-g2094339-assembly.jar s3a://dpg-datalake-acc/raw/dpp/dfplogs/networkactiveviews s3a://dpg-datalake-acc/clean/dpp/dfplogs/networkactiveviews 1529485200000");
         runner.setProperty(PutBatchJob.JOB_NAME, "clean-dpp-networkactiveviews");
         runner.setProperty(PutBatchJob.JOB_ROLE, "acc_aws_batch_job_role");

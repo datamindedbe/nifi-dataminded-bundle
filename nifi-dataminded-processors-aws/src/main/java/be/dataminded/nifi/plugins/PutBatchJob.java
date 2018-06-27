@@ -11,6 +11,7 @@ import org.apache.nifi.annotation.behavior.SupportsBatching;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.components.Validator;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.DataUnit;
@@ -90,6 +91,7 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
             .description("The command which the Docker container has to launch, basically the entry-point of the job. If it's not configured, take the default.")
             .required(false)
             .expressionLanguageSupported(true)
+            .addValidator(Validator.VALID)
             .build();
 
     public static final PropertyDescriptor JOB_NAME = new PropertyDescriptor.Builder()
