@@ -32,8 +32,6 @@ import java.util.*;
 @CapabilityDescription("Publishes a job on an AWS Batch Queue.")
 public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatchClient> {
 
-    private final ComponentLog logger = getLogger();
-
     public static final Set<Relationship> relationships = Collections.unmodifiableSet(
             new HashSet<>(Arrays.asList(REL_SUCCESS, REL_FAILURE)));
 
@@ -216,16 +214,15 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
                     environmentVariables,
                     commandList);
 
-            // Create a new flowfile and return it
-            FlowFile returnFlowFile = session.create(incomingFlowFile);
-            session.putAttribute(returnFlowFile, "batch.jobId", jobId);
-            session.transfer (returnFlowFile, REL_FAILURE);
+            session.putAttribute(incomingFlowFile, "batch.jobId", jobId);
+            session.transfer (incomingFlowFile, REL_SUCCESS);
 
         } catch(final Exception e) {
+            //TODO remove this since it's checked for nullity before ?
             if (incomingFlowFile == null) {
-                logger.error("Failed to launch batch job", new Object[]{e});
+                getLogger().error("Failed to launch batch job", new Object[]{e});
             } else {
-                logger.error("Failed to launch batch job", new Object[]{incomingFlowFile, e});
+                getLogger().error("Failed to launch batch job", new Object[]{incomingFlowFile, e});
                 incomingFlowFile = session.penalize(incomingFlowFile);
                 session.transfer (incomingFlowFile, REL_FAILURE);
             }
@@ -268,7 +265,7 @@ public class PutBatchJob extends AbstractAWSCredentialsProviderProcessor<AWSBatc
         request.setContainerOverrides(overrides);
 
         SubmitJobResult result = client.submitJob(request);
-        logger.info("Job submitted with id " + result.getJobId());
+        getLogger().info("Job submitted with id " + result.getJobId());
         return result.getJobId();
     }
 
