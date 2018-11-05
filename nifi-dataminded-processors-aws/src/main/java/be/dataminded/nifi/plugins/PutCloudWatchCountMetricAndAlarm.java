@@ -88,7 +88,7 @@ public class PutCloudWatchCountMetricAndAlarm extends AbstractAWSCredentialsProv
             .description("The environment of this Nifi instance, this will be added to the dimension of the metric and the name of the alarm")
             .required(true)
             .defaultValue("ACC")
-            .allowableValues("ACC", "PRD")
+            .allowableValues("ACC", "PRD", "TEST")
             .addValidator(new StandardValidators.StringLengthValidator(1, 255))
             .build();
 
